@@ -1,0 +1,72 @@
+# Database configuration
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/salon_management
+    username: postgres
+    password: 123
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+#    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+#        format_sql: true
+
+#  security:
+#    oauth2:
+#      client:
+#        registration:
+#          google:
+#            client-id: ${GOOGLE_CLIENT_ID:your-google-client-id}
+#            client-secret: ${GOOGLE_CLIENT_SECRET:your-google-client-secret}
+#            scope:
+#              - email
+#              - profile
+#              - openid
+#          github:
+#            client-id: ${GITHUB_CLIENT_ID:your-github-client-id}
+#            client-secret: ${GITHUB_CLIENT_SECRET:your-github-client-secret}
+#            .redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+#            scope:
+#              - read:user
+#              - user:email
+
+# JWT Security configuration
+security:
+  jwt:
+    secret: ${JWT_SECRET:saiofal;vkasfbehwqpofhjashofjaswfpojasfvbafop[hfifonfo[shjfwefjjfslajfsahfoshffasnbash[f}
+    issuer: ${JWT_ISSUER:api.salon_management.com}
+    access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:600}
+    refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:86400}
+    refresh-token-cookie-name: ${JWT_REFRESH_COOKIE_NAME:refreshToken}
+    cookie-secure: ${JWT_COOKIE_SECURE:false} # ✅ MUST be false for localhost
+    cookie-http-only: ${JWT_COOKIE_HTTP_ONLY:true}
+    cookie-same-site: ${JWT_COOKIE_SAME_SITE:lax}
+    cookie-domain: ${JWT_COOKIE_DOMAIN:localhost}
+
+app:
+  cors:
+    front-end-url: ${FRONTEND_URL:http://localhost:5173}
+  auth:
+    frontend:
+      success-redirect-url: ${FRONTEND_SUCCESS_REDIRECT_URL:http://localhost:5173/oauth/success}
+      failure-redirect-url: ${FRONTEND_FAILURE_REDIRECT_URL:http://localhost:5173/oauth/failure}
+
+
+#logging.level.org.springframework=DEBUG
+#logging.level.org.hibernate.SQL=DEBUG
+#logging.level.org.springframework.security=DEBUG
+#logging.level.com.ecommerce.project=DEBUG
+#logging:
+#  level:
+#    org:
+#      springframework:
+#        security: debug
+#      hibernate:
+#        SQL: DEBUG
+#    com:
+#      panda:
+#        salon_mgt_backend: trace

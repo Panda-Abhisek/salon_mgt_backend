@@ -1,0 +1,92 @@
+package com.panda.salon_mgt_backend.services.impl;
+
+import com.panda.salon_mgt_backend.exceptions.AlreadyExistsException;
+import com.panda.salon_mgt_backend.exceptions.ResourceNotFoundException;
+import com.panda.salon_mgt_backend.models.AppRole;
+import com.panda.salon_mgt_backend.models.Role;
+import com.panda.salon_mgt_backend.models.Salon;
+import com.panda.salon_mgt_backend.models.User;
+import com.panda.salon_mgt_backend.payloads.SalonCreateRequest;
+import com.panda.salon_mgt_backend.payloads.SalonResponse;
+import com.panda.salon_mgt_backend.repositories.RoleRepository;
+import com.panda.salon_mgt_backend.repositories.SalonRepository;
+import com.panda.salon_mgt_backend.services.SalonService;
+import com.panda.salon_mgt_backend.services.UserService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class SalonServiceImpl implements SalonService {
+
+    private final SalonRepository salonRepository;
+    private final RoleRepository roleRepository;
+    private final UserService userService;
+
+    @Override
+    @Transactional
+    public SalonResponse createSalon(SalonCreateRequest request, Authentication auth) {
+
+        User user = userService.getCurrentUserEntity(auth);
+
+        if (salonRepository.existsByOwner(user)) {
+            throw new AlreadyExistsException("User already owns a salon");
+        }
+
+        Salon salon = new Salon();
+        salon.setSalonName(request.salonName());
+        salon.setSalonAddress(request.salonAddress());
+        salon.setOwner(user);
+
+        Salon saved = salonRepository.save(salon);
+
+        // ---- ROLE UPGRADE ----
+        Role salonAdminRole = roleRepository.findByRoleName(AppRole.ROLE_SALON_ADMIN)
+                .orElseThrow(() -> new ResourceNotFoundException("ROLE_SALON_ADMIN not found"));
+
+        user.getRoles().add(salonAdminRole);
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Salon getMySalonEntity(Authentication auth) {
+
+        User user = userService.getCurrentUserEntity(auth);
+
+        return salonRepository.findByOwner(user)
+                .orElseThrow(() -> new ResourceNotFoundException("Salon not found"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SalonResponse getMySalon(Authentication auth) {
+        Salon salon = getMySalonEntity(auth);
+        return mapToResponse(salon);
+    }
+
+    @Override
+    public SalonResponse updateMySalon(SalonCreateRequest request, Authentication auth) {
+
+        User user = userService.getCurrentUserEntity(auth);
+
+        Salon salon = salonRepository.findByOwner(user)
+                .orElseThrow(() -> new ResourceNotFoundException("Salon not found"));
+
+        salon.setSalonName(request.salonName());
+        salon.setSalonAddress(request.salonAddress());
+
+        return mapToResponse(salonRepository.save(salon));
+    }
+
+    private SalonResponse mapToResponse(Salon salon) {
+        return new SalonResponse(
+                salon.getSalonId(),
+                salon.getSalonName(),
+                salon.getSalonAddress()
+        );
+    }
+}
