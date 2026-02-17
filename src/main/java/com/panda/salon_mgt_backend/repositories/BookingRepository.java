@@ -365,4 +365,19 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             """)
     List<Object[]> topServices(Long salonId);
 
+    @Query("""
+                SELECT FUNCTION('DATE', b.startTime), COUNT(b)
+                FROM Booking b
+                WHERE b.salon.salonId = :salonId
+                  AND b.startTime >= :from
+                  AND b.startTime < :to
+                GROUP BY FUNCTION('DATE', b.startTime)
+                ORDER BY FUNCTION('DATE', b.startTime)
+            """)
+    List<Object[]> bookingsPerDay(
+            Long salonId,
+            Instant from,
+            Instant to
+    );
+
 }
