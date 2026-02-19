@@ -1,8 +1,8 @@
 package com.panda.salon_mgt_backend.services.impl;
 
 import com.panda.salon_mgt_backend.exceptions.AlreadyExistsException;
-import com.panda.salon_mgt_backend.exceptions.ResourceNotFoundException;
 import com.panda.salon_mgt_backend.exceptions.DeactivateException;
+import com.panda.salon_mgt_backend.exceptions.ResourceNotFoundException;
 import com.panda.salon_mgt_backend.models.*;
 import com.panda.salon_mgt_backend.payloads.AssignServicesRequest;
 import com.panda.salon_mgt_backend.payloads.ServiceResponse;
@@ -14,8 +14,8 @@ import com.panda.salon_mgt_backend.repositories.UserRepository;
 import com.panda.salon_mgt_backend.services.SalonService;
 import com.panda.salon_mgt_backend.services.StaffService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
+import com.panda.salon_mgt_backend.utils.TenantGuard;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,6 +36,7 @@ public class StaffServiceImpl implements StaffService {
     private final PasswordEncoder passwordEncoder;
     private final ServicesRepository servicesRepository;
     private final TenantContext tenantContext;
+    private final TenantGuard tenantGuard;
 
     @Override
     @Transactional(readOnly = true)
@@ -148,20 +149,22 @@ public class StaffServiceImpl implements StaffService {
         User staff = userRepository.findByIdWithRolesAndServices(staffId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
 
+        tenantGuard.assertStaffBelongsToTenant(staff, auth);
+
         if (!staff.isEnabled()) {
             throw new DeactivateException("Inactive staff cannot be assigned services");
         }
 
-        // 🔐 salon ownership check
-        if (!staff.getStaffSalon().getSalonId().equals(salon.getSalonId())) {
-            throw new AccessDeniedException("Staff does not belong to your salon");
-        }
+//        // 🔐 salon ownership check
+//        if (!staff.getStaffSalon().getSalonId().equals(salon.getSalonId())) {
+//            throw new AccessDeniedException("Staff does not belong to your salon");
+//        }
 
         // fetch valid services only
         Set<Services> services = servicesRepository
                 .findAllById(request.serviceIds())
                 .stream()
-                .filter(s -> s.getSalon().equals(salon))
+                .peek(s -> tenantGuard.assertServiceBelongsToTenant(s, auth))
                 .collect(Collectors.toSet());
         staff.setServices(services);
         return map(staff);
