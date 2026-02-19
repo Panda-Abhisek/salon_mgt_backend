@@ -13,6 +13,7 @@ import com.panda.salon_mgt_backend.repositories.ServicesRepository;
 import com.panda.salon_mgt_backend.repositories.UserRepository;
 import com.panda.salon_mgt_backend.services.SalonService;
 import com.panda.salon_mgt_backend.services.StaffService;
+import com.panda.salon_mgt_backend.utils.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -34,11 +35,13 @@ public class StaffServiceImpl implements StaffService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final ServicesRepository servicesRepository;
+    private final TenantContext tenantContext;
 
     @Override
     @Transactional(readOnly = true)
     public List<StaffResponse> getMyStaff(Authentication auth) {
-        Salon salon = salonService.getMySalonEntity(auth);
+//     Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
 
         return userRepository
                 .findStaffBySalonWithRolesAndServices(salon)
@@ -52,7 +55,8 @@ public class StaffServiceImpl implements StaffService {
             StaffCreateRequest request,
             Authentication auth
     ) {
-        Salon salon = salonService.getMySalonEntity(auth);
+//        Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
 
         if (userRepository.existsByEmail(request.email())) {
             throw new AlreadyExistsException("User with this email already exists");
@@ -84,7 +88,8 @@ public class StaffServiceImpl implements StaffService {
     @Override
     @Transactional
     public StaffResponse deactivateStaff(Long id, Authentication auth) {
-        Salon salon = salonService.getMySalonEntity(auth);
+//        Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
         User staff = getStaff(id, salon);
 
         // 1️⃣ deactivate staff
@@ -99,7 +104,8 @@ public class StaffServiceImpl implements StaffService {
 
     @Override
     public StaffResponse reactivateStaff(Long id, Authentication auth) {
-        Salon salon = salonService.getMySalonEntity(auth);
+//        Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
         User staff = getStaff(id, salon);
 
         staff.setEnabled(true);
@@ -112,7 +118,8 @@ public class StaffServiceImpl implements StaffService {
             Long staffId,
             Authentication auth
     ) {
-        Salon salon = salonService.getMySalonEntity(auth);
+//        Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
 
         User staff = userRepository.findByUserIdAndStaffSalon(staffId, salon)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
@@ -135,7 +142,8 @@ public class StaffServiceImpl implements StaffService {
             AssignServicesRequest request,
             Authentication auth
     ) {
-        Salon salon = salonService.getMySalonEntity(auth);
+//        Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
 
         User staff = userRepository.findByIdWithRolesAndServices(staffId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));

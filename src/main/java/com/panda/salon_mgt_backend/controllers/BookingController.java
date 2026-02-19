@@ -36,7 +36,7 @@ public class BookingController {
     public ResponseEntity<List<BookingResponse>> getSalonBookings(
             Authentication auth
     ) {
-        return ResponseEntity.ok(bookingService.getSalonBookings(auth));
+        return ResponseEntity.ok(bookingService.getUpcomingTenantBookings(auth));
     }
 
     @GetMapping("/availability")

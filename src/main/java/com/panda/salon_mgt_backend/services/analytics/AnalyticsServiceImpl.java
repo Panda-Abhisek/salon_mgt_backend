@@ -5,6 +5,7 @@ import com.panda.salon_mgt_backend.models.TrendRange;
 import com.panda.salon_mgt_backend.payloads.LeaderboardItemDTO;
 import com.panda.salon_mgt_backend.repositories.BookingRepository;
 import com.panda.salon_mgt_backend.services.SalonService;
+import com.panda.salon_mgt_backend.utils.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     private final BookingRepository bookingRepository;
     private final SalonService salonService;
+    private final TenantContext tenantContext;
 
     @Override
     public List<TrendPointDTO> getBookingTrend(Authentication auth, TrendRange range, LocalDate from, LocalDate to) {
@@ -121,8 +123,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     public List<LeaderboardItemDTO> getTopStaff(Authentication auth) {
-        Salon salon = salonService.getMySalonEntity(auth);
-
+//        Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
         return bookingRepository.topStaff(salon.getSalonId())
                 .stream()
                 .limit(5)

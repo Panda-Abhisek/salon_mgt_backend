@@ -15,7 +15,7 @@ public interface BookingService {
 
     List<BookingResponse> getTodayBookings(Authentication auth);
 
-    List<BookingResponse> getSalonBookings(Authentication auth);
+    List<BookingResponse> getUpcomingTenantBookings(Authentication auth);
 
     @Transactional
     BookingResponse cancelBooking(Long bookingId, Authentication auth);

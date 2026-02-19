@@ -9,11 +9,10 @@ import com.panda.salon_mgt_backend.payloads.*;
 import com.panda.salon_mgt_backend.repositories.BookingRepository;
 import com.panda.salon_mgt_backend.repositories.ServicesRepository;
 import com.panda.salon_mgt_backend.repositories.UserRepository;
-import com.panda.salon_mgt_backend.security.jwt.JwtService;
 import com.panda.salon_mgt_backend.services.AvailabilityService;
 import com.panda.salon_mgt_backend.services.BookingService;
-import com.panda.salon_mgt_backend.services.SalonService;
-import com.panda.salon_mgt_backend.utils.AuthUtils;
+import com.panda.salon_mgt_backend.utils.TenantContext;
+import com.panda.salon_mgt_backend.utils.TenantGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -37,12 +36,11 @@ import static com.panda.salon_mgt_backend.models.BookingStatus.COMPLETED;
 public class BookingServiceImpl implements BookingService {
 
     private final BookingRepository bookingRepository;
-    private final SalonService salonService;
     private final ServicesRepository servicesRepository;
     private final UserRepository userRepository;
     private final AvailabilityService availabilityService;
-    private final JwtService jwtService;
-    private final AuthUtils authUtils;
+    private final TenantGuard tenantGuard;
+    private final TenantContext tenantContext;
 
     private void assertTransitionAllowed(
             BookingStatus from,
@@ -70,9 +68,7 @@ public class BookingServiceImpl implements BookingService {
 
     private User resolveCustomer(CreateBookingRequest req, Authentication auth) {
 
-        User authenticatedUser = userRepository
-                .findByEmailWithRoles(auth.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User authenticatedUser = tenantContext.getCurrentUser(auth);
 
         boolean isAdmin = authenticatedUser.hasRole("ROLE_SALON_ADMIN");
         boolean isUser = authenticatedUser.hasRole("ROLE_USER");
@@ -118,6 +114,7 @@ public class BookingServiceImpl implements BookingService {
         Services service = servicesRepository
                 .findById(req.serviceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Service not found"));
+        tenantGuard.assertServiceBelongsToTenant(service, auth);
 
         if (!service.isActive()) {
             throw new InactiveException("Service is inactive");
@@ -126,10 +123,8 @@ public class BookingServiceImpl implements BookingService {
         User staff = userRepository
                 .findById(req.staffId())
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
+        tenantGuard.assertStaffBelongsToTenant(staff, auth);
 
-        if (!staff.getStaffSalon().equals(service.getSalon())) {
-            throw new CanNotException("Staff not in this salon");
-        }
         if (!staff.isEnabled()) {
             throw new InactiveException("Staff is inactive");
         }
@@ -157,7 +152,7 @@ public class BookingServiceImpl implements BookingService {
         }
 
         Booking booking = new Booking();
-        booking.setSalon(service.getSalon()); // 🔥 better than getMySalonEntity
+        booking.setSalon(tenantContext.getSalon(auth)); // 🔥 better than getMySalonEntity
         booking.setService(service);
         booking.setStaff(staff);
         booking.setCustomer(customer);        // 🔥 required
@@ -170,14 +165,11 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public List<BookingResponse> getStaffBookings(Long staffId, LocalDate date, Authentication auth) {
-        Salon salon = salonService.getMySalonEntity(auth);
 
         User staff = userRepository.findById(staffId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
 
-        if (!salon.equals(staff.getStaffSalon())) {
-            throw new AccessDeniedException("Staff does not belong to your salon");
-        }
+        tenantGuard.assertStaffBelongsToTenant(staff, auth);
 
         return bookingRepository
                 .findByStaffUserIdAndStartTimeBetweenOrderByStartTimeAsc(
@@ -219,9 +211,6 @@ public class BookingServiceImpl implements BookingService {
 
         Instant fromInstant = null;
         Instant toInstant = null;
-        boolean hasFrom = fromInstant != null;
-        boolean hasTo = toInstant != null;
-
         if (from != null) {
             fromInstant = from.atStartOfDay(zone).toInstant();
         }
@@ -229,6 +218,8 @@ public class BookingServiceImpl implements BookingService {
         if (to != null) {
             toInstant = to.plusDays(1).atStartOfDay(zone).toInstant();
         }
+        boolean hasFrom = fromInstant != null;
+        boolean hasTo = toInstant != null;
 
         Instant startOfToday = LocalDate.now(zone)
                 .atStartOfDay(zone)
@@ -245,13 +236,12 @@ public class BookingServiceImpl implements BookingService {
         boolean upcoming = range == BookingRange.UPCOMING;
         boolean past = range == BookingRange.PAST;
 
-        User user = authUtils.getCurrentUser(auth);
+        User user = tenantContext.getCurrentUser(auth);
         Page<Booking> bookingsPage;
 
         /* ---------- SALON ADMIN ---------- */
         if (user.hasRole("ROLE_SALON_ADMIN")) {
-
-            Salon salon = salonService.getMySalonEntity(auth);
+            Salon salon = tenantContext.getSalon(auth);
 
             bookingsPage = (search == null)
                     ? bookingRepository.findAdminBookingsNoSearch(
@@ -325,9 +315,11 @@ public class BookingServiceImpl implements BookingService {
 
         User staff = userRepository.findById(staffId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
+        tenantGuard.assertStaffBelongsToTenant(staff, auth);
 
         Services service = servicesRepository.findById(serviceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Service not found"));
+        tenantGuard.assertServiceBelongsToTenant(service, auth);
 
         if (!service.isActive()) {
             throw new IllegalStateException("Service is inactive");
@@ -350,23 +342,7 @@ public class BookingServiceImpl implements BookingService {
     @Transactional(readOnly = true)
     public List<BookingResponse> getTodayBookings(Authentication auth) {
 
-        User user = authUtils.getCurrentUser(auth);
-
-        Salon salon;
-
-        if (user.hasRole("ROLE_SALON_ADMIN")) {
-            salon = salonService.getMySalonEntity(auth);
-        }
-        else if (user.hasRole("ROLE_STAFF")) {
-            salon = user.getStaffSalon();
-
-            if (salon == null) {
-                throw new ResourceNotFoundException("Staff not assigned to any salon");
-            }
-        }
-        else {
-            throw new AccessDeniedException("Not allowed");
-        }
+        Salon salon = tenantContext.resolveSalonForRead(auth);
 
         LocalDate today = LocalDate.now();
 
@@ -393,8 +369,9 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    public List<BookingResponse> getSalonBookings(Authentication auth) {
-        Salon salon = salonService.getMySalonEntity(auth);
+    public List<BookingResponse> getUpcomingTenantBookings(Authentication auth) {
+        Salon salon = tenantContext.getSalon(auth);
+
         return bookingRepository
                 .findBySalonSalonIdAndStartTimeBetween(
                         salon.getSalonId(),
@@ -462,26 +439,23 @@ public class BookingServiceImpl implements BookingService {
     @Transactional(readOnly = true)
     public BookingResponse fetchOwnedBooking(Long bookingId, Authentication auth) {
 
-        User user = authUtils.getCurrentUser(auth);
+        User user = tenantContext.getCurrentUser(auth);
 
         Booking booking = bookingRepository
                 .findByIdWithDetails(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
 
         if (user.hasRole("ROLE_SALON_ADMIN")) {
-            Salon salon = salonService.getMySalonEntity(auth);
-            if (!booking.getSalon().equals(salon)) {
-                throw new AccessDeniedException("Not your salon booking");
-            }
+            assertAdminOwnsBooking(booking, auth);
         }
         else if (user.hasRole("ROLE_STAFF")) {
             if (!booking.getStaff().equals(user)) {
-                throw new AccessDeniedException("Not your booking");
+                throw new CanNotException("Not your booking");
             }
         }
         else {
             if (!booking.getCustomer().equals(user)) {
-                throw new AccessDeniedException("Not your booking");
+                throw new CanNotException("Not your booking");
             }
         }
 
@@ -492,7 +466,7 @@ public class BookingServiceImpl implements BookingService {
             Long bookingId,
             Authentication auth
     ) {
-        User user = authUtils.getCurrentUser(auth);
+        User user = tenantContext.getCurrentUser(auth);
 
         Booking booking = bookingRepository
                 .findByIdWithDetails(bookingId)
@@ -500,43 +474,23 @@ public class BookingServiceImpl implements BookingService {
 
         // SALON ADMIN → salon scoped
         if (user.hasRole("ROLE_SALON_ADMIN")) {
-            Salon salon = salonService.getMySalonEntity(auth);
-
-            if (!booking.getSalon().equals(salon)) {
-                throw new AccessDeniedException("Not your salon booking");
-            }
+            assertAdminOwnsBooking(booking, auth);
         }
-
         // STAFF → must be assigned to booking
         else if (user.hasRole("ROLE_STAFF")) {
             if (!booking.getStaff().getUserId().equals(user.getUserId())) {
-                throw new AccessDeniedException("Not your assigned booking");
+                throw new CanNotException("Not your assigned booking");
             }
         }
-
         // USER → customer ownership
         else {
             if (!booking.getCustomer().getUserId().equals(user.getUserId())) {
-                throw new AccessDeniedException("Not your booking");
+                throw new CanNotException("Not your booking");
             }
         }
 
         return booking;
     }
-//    private Booking getOwnedBooking(
-//            Long bookingId,
-//            Authentication authentication
-//    ) {
-//        // Resolve salon from auth
-//        Salon salon = salonService.getMySalonEntity(authentication);
-//
-//        // Fetch booking scoped to salon
-//        return bookingRepository
-//                .findByIdAndSalon(bookingId, salon)
-//                .orElseThrow(() ->
-//                        new ResourceNotFoundException("Booking not found")
-//                );
-//    }
 
     private BookingResponse toResponse(Booking booking) {
         return new BookingResponse(
@@ -557,13 +511,14 @@ public class BookingServiceImpl implements BookingService {
     @Transactional(readOnly = true)
     public AdminDashboardResponse getAdminDashboard(Authentication auth) {
 
-        User user = authUtils.getCurrentUser(auth);
+        User user = tenantContext.getCurrentUser(auth);
 
         if (!user.hasRole("ROLE_SALON_ADMIN")) {
             throw new AccessDeniedException("Admin access required");
         }
 
-        Salon salon = salonService.getMySalonEntity(auth);
+//        Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
 
         long totalBookings = bookingRepository.countBySalon(salon);
 
@@ -619,6 +574,10 @@ public class BookingServiceImpl implements BookingService {
                 staffCount,
                 recentBookings
         );
+    }
+
+    private void assertAdminOwnsBooking(Booking booking, Authentication auth) {
+        tenantGuard.assertBookingInTenant(booking, auth);
     }
 
 }
