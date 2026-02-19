@@ -13,8 +13,9 @@ import com.panda.salon_mgt_backend.payloads.StaffResponse;
 import com.panda.salon_mgt_backend.repositories.SalonRepository;
 import com.panda.salon_mgt_backend.repositories.ServicesRepository;
 import com.panda.salon_mgt_backend.repositories.UserRepository;
-import com.panda.salon_mgt_backend.services.SalonService;
 import com.panda.salon_mgt_backend.services.ServicesService;
+import com.panda.salon_mgt_backend.utils.TenantContext;
+import com.panda.salon_mgt_backend.utils.TenantGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -30,16 +31,17 @@ import java.util.stream.Collectors;
 public class ServicesServiceImpl implements ServicesService {
 
     private final ServicesRepository servicesRepository;
-    private final SalonService salonService;
     private final UserRepository userRepository;
     private final SalonRepository salonRepository;
+    private final TenantContext tenantContext;
+    private final TenantGuard tenantGuard;
 
     @Override
     @Transactional(readOnly = true)
     public List<ServiceResponse> getMyServices(Authentication authentication) {
 
         // 1. Resolve salon from authenticated user
-        Salon salon = salonService.getMySalonEntity(authentication);
+        Salon salon = tenantContext.getSalon(authentication);
 
         // 2. Fetch services via DTO projection (N+1 safe)
         return servicesRepository.findServiceResponsesBySalon(salon);
@@ -51,7 +53,7 @@ public class ServicesServiceImpl implements ServicesService {
             Authentication authentication
     ) {
         // 1. Resolve salon (ownership enforced here)
-        Salon salon = salonService.getMySalonEntity(authentication);
+        Salon salon = tenantContext.getSalon(authentication);
 
         // 2. Uniqueness check (per salon)
         if (servicesRepository.existsBySalonAndServiceName(salon, request.name())) {
@@ -85,7 +87,7 @@ public class ServicesServiceImpl implements ServicesService {
             ServiceUpdateRequest request,
             Authentication authentication
     ) {
-        Salon salon = salonService.getMySalonEntity(authentication);
+        Salon salon = tenantContext.getSalon(authentication);
 
         Services service = servicesRepository
                 .findByServiceIdAndSalon(serviceId, salon)
@@ -158,7 +160,7 @@ public class ServicesServiceImpl implements ServicesService {
             Authentication authentication
     ) {
         // 1️⃣ Resolve salon (ownership enforced)
-        Salon salon = salonService.getMySalonEntity(authentication);
+        Salon salon = tenantContext.getSalon(authentication);
 
         // 2️⃣ Fetch service WITH staff (needed for validation)
         Services service = servicesRepository
@@ -191,7 +193,7 @@ public class ServicesServiceImpl implements ServicesService {
             Authentication authentication
     ) {
         // 1. Resolve salon (ownership enforced)
-        Salon salon = salonService.getMySalonEntity(authentication);
+        Salon salon = tenantContext.getSalon(authentication);
 
         // 2. Fetch service scoped to salon
         Services service = servicesRepository
@@ -217,7 +219,7 @@ public class ServicesServiceImpl implements ServicesService {
             Long serviceId,
             Authentication auth
     ) {
-        Salon salon = salonService.getMySalonEntity(auth);
+        Salon salon = tenantContext.getSalon(auth);
 
         Services service = servicesRepository
                 .findByServiceIdAndSalon(serviceId, salon)
