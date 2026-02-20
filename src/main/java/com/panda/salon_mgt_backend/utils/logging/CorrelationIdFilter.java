@@ -26,31 +26,39 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        String correlationId = request.getHeader(HEADER);
-
-        if (correlationId == null || correlationId.isBlank()) {
-            correlationId = UUID.randomUUID().toString();
-        }
-
-        // Add to logging context
+        String correlationId = extractOrGenerateId(request);
         MDC.put(MDC_KEY, correlationId);
-
-        // Add to response header
         response.setHeader(HEADER, correlationId);
 
         long start = System.nanoTime();
+
         try {
             filterChain.doFilter(request, response);
         } finally {
             long durationMs = (System.nanoTime() - start) / 1_000_000;
 
-            log.info("Request {} {} completed in {} ms",
+            log.info(
+                    "HTTP_REQUEST_COMPLETED method={} path={} status={} durationMs={} query={}",
                     request.getMethod(),
                     request.getRequestURI(),
-                    durationMs
+                    response.getStatus(),
+                    durationMs,
+                    safeQuery(request)
             );
 
-            MDC.remove(MDC_KEY); // safer than clear()
+            MDC.remove(MDC_KEY);
         }
+    }
+
+    private String extractOrGenerateId(HttpServletRequest request) {
+        String id = request.getHeader(HEADER);
+        return (id == null || id.isBlank())
+                ? UUID.randomUUID().toString()
+                : id;
+    }
+
+    private String safeQuery(HttpServletRequest request) {
+        String q = request.getQueryString();
+        return q == null ? "" : q;
     }
 }
