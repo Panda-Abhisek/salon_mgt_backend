@@ -55,11 +55,6 @@ app:
       success-redirect-url: ${FRONTEND_SUCCESS_REDIRECT_URL:http://localhost:5173/oauth/success}
       failure-redirect-url: ${FRONTEND_FAILURE_REDIRECT_URL:http://localhost:5173/oauth/failure}
 
-
-#logging.level.org.springframework=DEBUG
-#logging.level.org.hibernate.SQL=DEBUG
-#logging.level.org.springframework.security=DEBUG
-#logging.level.com.ecommerce.project=DEBUG
 #logging:
 #  level:
 #    org:
@@ -70,3 +65,8 @@ app:
 #    com:
 #      panda:
 #        salon_mgt_backend: trace
+
+logging:
+  pattern:
+    level: "%5p [corr:%X{correlationId}]"
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level [corr:%X{correlationId}] %logger - %msg%n"

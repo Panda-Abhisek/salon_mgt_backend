@@ -14,6 +14,7 @@ import com.panda.salon_mgt_backend.services.BookingService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
 import com.panda.salon_mgt_backend.utils.TenantGuard;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +32,7 @@ import java.util.List;
 
 import static com.panda.salon_mgt_backend.models.BookingStatus.COMPLETED;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BookingServiceImpl implements BookingService {
@@ -510,14 +512,12 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional(readOnly = true)
     public AdminDashboardResponse getAdminDashboard(Authentication auth) {
-
         User user = tenantContext.getCurrentUser(auth);
 
         if (!user.hasRole("ROLE_SALON_ADMIN")) {
             throw new AccessDeniedException("Admin access required");
         }
 
-//        Salon salon = salonService.getMySalonEntity(auth);
         Salon salon = tenantContext.getSalon(auth);
 
         long totalBookings = bookingRepository.countBySalon(salon);
