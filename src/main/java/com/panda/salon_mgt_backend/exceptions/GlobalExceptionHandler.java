@@ -2,7 +2,7 @@ package com.panda.salon_mgt_backend.exceptions;
 
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.http.HttpHeaders;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -10,43 +10,52 @@ import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.util.Map;
+import java.time.Instant;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(AlreadyExistsException.class)
-    public ResponseEntity<ErrorResponse> handleSalonExists(AlreadyExistsException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new ErrorResponse(ex.getMessage(), HttpStatus.CONFLICT));
+    /* ================= DOMAIN EXCEPTIONS ================= */
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex, HttpServletRequest req) {
+        return build(HttpStatus.NOT_FOUND, ex, req);
     }
 
-    @ExceptionHandler(DeactivateException.class)
-    public ResponseEntity<ErrorResponse> handleStaffInactive(DeactivateException ex) {
-        return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(new ErrorResponse(ex.getMessage(), HttpStatus.CONFLICT));
+    @ExceptionHandler({
+            AlreadyExistsException.class,
+            DeactivateException.class,
+            InactiveException.class,
+            CanNotException.class
+    })
+    public ResponseEntity<ApiError> handleConflict(RuntimeException ex, HttpServletRequest req) {
+        return build(HttpStatus.CONFLICT, ex, req);
     }
 
-    @ExceptionHandler(InactiveException.class)
-    public ResponseEntity<ErrorResponse> handleStaffInactive(InactiveException ex) {
-        return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(new ErrorResponse(ex.getMessage(), HttpStatus.CONFLICT));
+    /* ================= VALIDATION ================= */
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest req) {
+        String message = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(f -> f.getField() + ": " + f.getDefaultMessage())
+                .findFirst()
+                .orElse("Validation failed");
+
+        return build(HttpStatus.BAD_REQUEST, message, req);
     }
 
-    @ExceptionHandler(CanNotException.class)
-    public ResponseEntity<ErrorResponse> handleStaffInactive(CanNotException ex) {
-        return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(new ErrorResponse(ex.getMessage(), HttpStatus.CONFLICT));
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiError> handleConstraint(ConstraintViolationException ex, HttpServletRequest req) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
     }
+
+    /* ================= AUTH ================= */
 
     @ExceptionHandler({
             BadCredentialsException.class,
@@ -54,54 +63,48 @@ public class GlobalExceptionHandler {
             JwtException.class,
             AuthenticationException.class
     })
-    public ResponseEntity<ApiError> handleAuthExceptions(Exception ex, HttpServletRequest request) {
+    public ResponseEntity<ApiError> handleAuth(Exception ex, HttpServletRequest req) {
         HttpStatus status = HttpStatus.UNAUTHORIZED;
-        if (ex instanceof DisabledException) {
-            status = HttpStatus.FORBIDDEN;
-        } else if (ex instanceof LockedException) {
-            status = HttpStatus.LOCKED;
-        }
-        ApiError body = ApiError.of(status, "Authentication error", safeMessage(ex), request.getRequestURI());
-        return ResponseEntity.status(status)
-                .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .header("Pragma", "no-cache")
-                .body(body);
+
+        if (ex instanceof DisabledException) status = HttpStatus.FORBIDDEN;
+        if (ex instanceof LockedException) status = HttpStatus.LOCKED;
+
+        return build(status, safeMessage(ex), req);
     }
 
     @ExceptionHandler(RefreshTokenException.class)
-    @ResponseStatus(HttpStatus.UNAUTHORIZED)
-    public Map<String, String> handleRefreshTokenException(RefreshTokenException ex) {
-        return Map.of("message", ex.getMessage());
+    public ResponseEntity<ApiError> handleRefresh(RefreshTokenException ex, HttpServletRequest req) {
+        return build(HttpStatus.UNAUTHORIZED, ex, req);
     }
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(ResourceNotFoundException ex) {
-        ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), HttpStatus.NOT_FOUND);
-        return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
+    /* ================= FALLBACK ================= */
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleUnknown(Exception ex, HttpServletRequest req) {
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Something went wrong", req);
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex) {
-        ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST);
-        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    /* ================= HELPERS ================= */
+
+    private ResponseEntity<ApiError> build(HttpStatus status, Exception ex, HttpServletRequest req) {
+        return build(status, ex.getMessage(), req);
+    }
+
+    private ResponseEntity<ApiError> build(HttpStatus status, String message, HttpServletRequest req) {
+        ApiError error = new ApiError(
+                Instant.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                message,
+                req.getRequestURI()
+        );
+        return ResponseEntity.status(status).body(error);
     }
 
     private String safeMessage(Exception ex) {
-        // Avoid leaking sensitive details in prod
         String msg = ex.getMessage();
-        return (msg == null || msg.isBlank()) ? "Invalid or expired credentials" : msg;
+        return (msg == null || msg.isBlank())
+                ? "Invalid or expired credentials"
+                : msg;
     }
-
-    public record ApiError(
-            OffsetDateTime timestamp,
-            int status,
-            String error,
-            String message,
-            String path
-    ) {
-        public static ApiError of(HttpStatus status, String error, String message, String path) {
-            return new ApiError(OffsetDateTime.now(ZoneOffset.UTC), status.value(), error, message, path);
-        }
-    }
-
 }
