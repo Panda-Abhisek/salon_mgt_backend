@@ -31,5 +31,8 @@ public class Salon {
     @OneToOne(optional = false)
     @JoinColumn(name = "owner_id", nullable = false, unique = true)
     private User owner;
+
+    @OneToOne(mappedBy = "salon", cascade = CascadeType.ALL)
+    private Subscription subscription;
 }
 

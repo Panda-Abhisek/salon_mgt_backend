@@ -2,20 +2,21 @@ package com.panda.salon_mgt_backend.services.impl;
 
 import com.panda.salon_mgt_backend.exceptions.AlreadyExistsException;
 import com.panda.salon_mgt_backend.exceptions.ResourceNotFoundException;
-import com.panda.salon_mgt_backend.models.AppRole;
-import com.panda.salon_mgt_backend.models.Role;
-import com.panda.salon_mgt_backend.models.Salon;
-import com.panda.salon_mgt_backend.models.User;
+import com.panda.salon_mgt_backend.models.*;
 import com.panda.salon_mgt_backend.payloads.SalonCreateRequest;
 import com.panda.salon_mgt_backend.payloads.SalonResponse;
+import com.panda.salon_mgt_backend.repositories.PlanRepository;
 import com.panda.salon_mgt_backend.repositories.RoleRepository;
 import com.panda.salon_mgt_backend.repositories.SalonRepository;
+import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import com.panda.salon_mgt_backend.services.SalonService;
 import com.panda.salon_mgt_backend.services.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +25,8 @@ public class SalonServiceImpl implements SalonService {
     private final SalonRepository salonRepository;
     private final RoleRepository roleRepository;
     private final UserService userService;
+    private final PlanRepository planRepository;
+    private final SubscriptionRepository subscriptionRepository;
 
     @Override
     @Transactional
@@ -35,20 +38,33 @@ public class SalonServiceImpl implements SalonService {
             throw new AlreadyExistsException("User already owns a salon");
         }
 
+        // 1️⃣ Create salon
         Salon salon = new Salon();
         salon.setSalonName(request.salonName());
         salon.setSalonAddress(request.salonAddress());
         salon.setOwner(user);
 
-        Salon saved = salonRepository.save(salon);
+        Salon savedSalon = salonRepository.save(salon);
 
         // ---- ROLE UPGRADE ----
         Role salonAdminRole = roleRepository.findByRoleName(AppRole.ROLE_SALON_ADMIN)
                 .orElseThrow(() -> new ResourceNotFoundException("ROLE_SALON_ADMIN not found"));
-
         user.getRoles().add(salonAdminRole);
 
-        return mapToResponse(saved);
+        // 2️⃣ Assign FREE plan automatically
+        Plan freePlan = planRepository.findByType(PlanType.FREE)
+                .orElseThrow(() -> new IllegalStateException("FREE plan not bootstrapped"));
+
+        Subscription subscription = Subscription.builder()
+                .salon(savedSalon)
+                .plan(freePlan)
+                .status(SubscriptionStatus.ACTIVE)
+                .startDate(Instant.now())
+                .build();
+
+        subscriptionRepository.save(subscription);
+
+        return mapToResponse(savedSalon);
     }
 
     @Override
