@@ -1,9 +1,6 @@
 package com.panda.salon_mgt_backend.services.impl;
 
-import com.panda.salon_mgt_backend.exceptions.AlreadyExistsException;
-import com.panda.salon_mgt_backend.exceptions.CanNotException;
-import com.panda.salon_mgt_backend.exceptions.InactiveException;
-import com.panda.salon_mgt_backend.exceptions.ResourceNotFoundException;
+import com.panda.salon_mgt_backend.exceptions.*;
 import com.panda.salon_mgt_backend.models.*;
 import com.panda.salon_mgt_backend.payloads.*;
 import com.panda.salon_mgt_backend.repositories.BookingRepository;
@@ -514,9 +511,9 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional(readOnly = true)
     public AdminDashboardResponse getAdminDashboard(Authentication auth) {
-        if (!planGuard.isPro(auth)) {
-            throw new AccessDeniedException("Analytics requires PRO plan.");
-        }
+//        if (!planGuard.isPro(auth)) {
+//            throw new PlanUpgradeRequiredException("Analytics requires PRO plan.", PlanType.PRO);
+//        }
         User user = tenantContext.getCurrentUser(auth);
 
         if (!user.hasRole("ROLE_SALON_ADMIN")) {

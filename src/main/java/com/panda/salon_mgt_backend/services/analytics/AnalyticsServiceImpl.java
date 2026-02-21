@@ -10,6 +10,7 @@ import com.panda.salon_mgt_backend.utils.subscription.PlanGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -26,6 +27,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     private final TenantContext tenantContext;
     private final PlanGuard planGuard;
 
+    @Transactional
     @Override
     public List<TrendPointDTO> getBookingTrend(Authentication auth, TrendRange range, LocalDate from, LocalDate to) {
         planGuard.requirePro(auth);
