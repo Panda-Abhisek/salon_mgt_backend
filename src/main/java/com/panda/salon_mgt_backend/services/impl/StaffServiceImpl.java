@@ -1,7 +1,6 @@
 package com.panda.salon_mgt_backend.services.impl;
 
 import com.panda.salon_mgt_backend.exceptions.AlreadyExistsException;
-import com.panda.salon_mgt_backend.exceptions.CanNotException;
 import com.panda.salon_mgt_backend.exceptions.DeactivateException;
 import com.panda.salon_mgt_backend.exceptions.ResourceNotFoundException;
 import com.panda.salon_mgt_backend.models.*;
@@ -17,7 +16,6 @@ import com.panda.salon_mgt_backend.services.StaffService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
 import com.panda.salon_mgt_backend.utils.TenantGuard;
 import com.panda.salon_mgt_backend.utils.subscription.PlanGuard;
-import com.panda.salon_mgt_backend.utils.subscription.PlanLimits;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -60,7 +58,6 @@ public class StaffServiceImpl implements StaffService {
             StaffCreateRequest request,
             Authentication auth
     ) {
-//        Salon salon = salonService.getMySalonEntity(auth);
         Salon salon = tenantContext.getSalon(auth);
 
         if (userRepository.existsByEmail(request.email())) {
@@ -80,14 +77,8 @@ public class StaffServiceImpl implements StaffService {
         staff.setStaffSalon(salon);
         staff.setRoles(Set.of(userRole, staffRole));
 
-        if (planGuard.isFree(auth)) {
-//            Salon salon = tenantContext.getSalon(auth);
-            long count = userRepository.countStaffBySalon(salon);
-
-            if (count >= PlanLimits.FREE_MAX_STAFF) {
-                throw new CanNotException("Free plan allows max 2 staff. Upgrade required.");
-            }
-        }
+        long count = userRepository.countStaffBySalon(salon);
+        planGuard.assertStaffLimit(auth, count);
 
         User saved = userRepository.save(staff);
 

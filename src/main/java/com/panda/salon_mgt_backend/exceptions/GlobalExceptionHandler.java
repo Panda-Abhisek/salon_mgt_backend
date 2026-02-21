@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -41,6 +43,19 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(status).body(body);
+    }
+
+    @ExceptionHandler(PlanLimitExceededException.class)
+    public ResponseEntity<?> handlePlanLimit(PlanLimitExceededException ex) {
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", ex.getCode());
+        body.put("message", ex.getMessage());
+        body.put("limit", ex.getLimit());
+        body.put("upgradeRequired", ex.isUpgradeRequired());
+        body.put("timestamp", Instant.now());
+
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(body);
     }
 
     @ExceptionHandler({

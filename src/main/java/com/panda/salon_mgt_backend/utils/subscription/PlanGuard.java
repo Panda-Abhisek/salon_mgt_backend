@@ -1,10 +1,8 @@
 package com.panda.salon_mgt_backend.utils.subscription;
 
+import com.panda.salon_mgt_backend.exceptions.PlanLimitExceededException;
 import com.panda.salon_mgt_backend.exceptions.PlanUpgradeRequiredException;
-import com.panda.salon_mgt_backend.models.PlanType;
-import com.panda.salon_mgt_backend.models.Salon;
-import com.panda.salon_mgt_backend.models.Subscription;
-import com.panda.salon_mgt_backend.models.SubscriptionStatus;
+import com.panda.salon_mgt_backend.models.*;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import com.panda.salon_mgt_backend.utils.TenantContext;
 import lombok.RequiredArgsConstructor;
@@ -63,6 +61,26 @@ public class PlanGuard {
     public void requireNotFree(Authentication auth) {
         if (isFree(auth)) {
             throw new AccessDeniedException("Upgrade required to access this feature");
+        }
+    }
+
+    public Plan getCurrentPlan(Authentication auth) {
+        return getActiveSub(auth).getPlan();
+    }
+
+    public int maxStaff(Authentication auth) {
+        Integer limit = getCurrentPlan(auth).getMaxStaff();
+        return limit != null ? limit : Integer.MAX_VALUE;
+    }
+
+    public void assertStaffLimit(Authentication auth, long currentCount) {
+        int limit = maxStaff(auth);
+
+        if (currentCount >= limit) {
+            throw new PlanLimitExceededException(
+                    "Staff limit reached for your current plan",
+                    limit
+            );
         }
     }
 }
