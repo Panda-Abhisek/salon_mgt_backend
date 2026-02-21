@@ -6,12 +6,14 @@ import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import com.panda.salon_mgt_backend.services.BillingService;
 import com.panda.salon_mgt_backend.services.SubscriptionService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
+import com.panda.salon_mgt_backend.utils.subscription.SubscriptionDurations;
 import com.panda.salon_mgt_backend.utils.subscription.SubscriptionPolicy;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.core.Authentication;
 
+import java.time.Duration;
 import java.time.Instant;
 
 @Service
@@ -65,11 +67,15 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         }
 
         // 5️⃣ Activate new subscription
+        Instant now = Instant.now();
+        Duration duration = SubscriptionDurations.durationFor(newPlan.getType());
+
         Subscription upgraded = Subscription.builder()
                 .salon(salon)
                 .plan(newPlan)
                 .status(SubscriptionStatus.ACTIVE)
-                .startDate(Instant.now())
+                .startDate(now)
+                .endDate(now.plus(duration))
                 .build();
 
         return subscriptionRepository.save(upgraded);
