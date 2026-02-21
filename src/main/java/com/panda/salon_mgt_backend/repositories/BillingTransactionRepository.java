@@ -1,0 +1,11 @@
+package com.panda.salon_mgt_backend.repositories;
+
+import com.panda.salon_mgt_backend.models.BillingTransaction;
+import com.panda.salon_mgt_backend.models.Salon;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface BillingTransactionRepository extends JpaRepository<BillingTransaction, Long> {
+    List<BillingTransaction> findBySalonOrderByCreatedAtDesc(Salon salon);
+}

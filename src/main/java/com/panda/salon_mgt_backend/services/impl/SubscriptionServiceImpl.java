@@ -3,6 +3,7 @@ package com.panda.salon_mgt_backend.services.impl;
 import com.panda.salon_mgt_backend.models.*;
 import com.panda.salon_mgt_backend.repositories.PlanRepository;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
+import com.panda.salon_mgt_backend.services.BillingService;
 import com.panda.salon_mgt_backend.services.SubscriptionService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
 import com.panda.salon_mgt_backend.utils.subscription.SubscriptionPolicy;
@@ -22,6 +23,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final PlanRepository planRepository;
     private final TenantContext tenantContext;
     private final SubscriptionPolicy subscriptionPolicy;
+    private final BillingService billingService;
 
     @Override
     public Subscription getCurrentSubscription(Authentication auth) {
@@ -33,6 +35,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     }
 
     @Override
+    @Transactional
     public Subscription upgradePlan(Authentication auth, PlanType targetPlan) {
 
         Salon salon = tenantContext.getSalon(auth);
@@ -44,17 +47,24 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         // 1️⃣ Validate upgrade rules
         subscriptionPolicy.validateUpgrade(current, targetPlan);
 
-        // 2️⃣ Expire existing subscription (if exists)
+        // 2️⃣ Fetch target plan
+        Plan newPlan = planRepository.findByType(targetPlan)
+                .orElseThrow(() -> new IllegalStateException("Plan not found"));
+
+        // 3️⃣ BILLING (new)
+        BillingTransaction tx = billingService.charge(auth, newPlan);
+
+        if (tx.getStatus() != BillingStatus.PAID) {
+            throw new IllegalStateException("Payment failed");
+        }
+
+        // 4️⃣ Expire existing subscription
         if (current != null) {
             current.setStatus(SubscriptionStatus.EXPIRED);
             current.setEndDate(Instant.now());
         }
 
-        // 3️⃣ Fetch target plan
-        Plan newPlan = planRepository.findByType(targetPlan)
-                .orElseThrow(() -> new IllegalStateException("Plan not found"));
-
-        // 4️⃣ Create new subscription
+        // 5️⃣ Activate new subscription
         Subscription upgraded = Subscription.builder()
                 .salon(salon)
                 .plan(newPlan)

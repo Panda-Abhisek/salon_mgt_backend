@@ -19,8 +19,8 @@ public class Subscription {
     private Long id;
 
     // Tenant
-    @OneToOne
-    @JoinColumn(name = "salon_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "salon_id", nullable = false)
     private Salon salon;
 
     // Plan
