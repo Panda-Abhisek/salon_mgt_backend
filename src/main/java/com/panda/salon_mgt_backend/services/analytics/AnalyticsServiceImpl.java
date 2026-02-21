@@ -6,6 +6,7 @@ import com.panda.salon_mgt_backend.payloads.LeaderboardItemDTO;
 import com.panda.salon_mgt_backend.repositories.BookingRepository;
 import com.panda.salon_mgt_backend.services.SalonService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
+import com.panda.salon_mgt_backend.utils.subscription.PlanGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -23,9 +24,11 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     private final BookingRepository bookingRepository;
     private final SalonService salonService;
     private final TenantContext tenantContext;
+    private final PlanGuard planGuard;
 
     @Override
     public List<TrendPointDTO> getBookingTrend(Authentication auth, TrendRange range, LocalDate from, LocalDate to) {
+        planGuard.requirePro(auth);
         LocalDate today = LocalDate.now();
 
         if (range != null && range != TrendRange.CUSTOM) {
@@ -77,6 +80,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             LocalDate from,
             LocalDate to
     ) {
+        planGuard.requirePro(auth);
         LocalDate today = LocalDate.now();
 
         if (range != null && range != TrendRange.CUSTOM) {
@@ -123,6 +127,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     public List<LeaderboardItemDTO> getTopStaff(Authentication auth) {
+        planGuard.requirePro(auth);
 //        Salon salon = salonService.getMySalonEntity(auth);
         Salon salon = tenantContext.getSalon(auth);
         return bookingRepository.topStaff(salon.getSalonId())
@@ -137,7 +142,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     public List<LeaderboardItemDTO> getTopServices(Authentication auth) {
-        Salon salon = salonService.getMySalonEntity(auth);
+        planGuard.requirePro(auth);
+        Salon salon = tenantContext.getSalon(auth);
 
         return bookingRepository.topServices(salon.getSalonId())
                 .stream()

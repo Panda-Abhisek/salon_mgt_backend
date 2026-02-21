@@ -26,6 +26,23 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex, req);
     }
 
+    @ExceptionHandler(PlanUpgradeRequiredException.class)
+    public ResponseEntity<ApiError> handlePlanUpgrade(
+            PlanUpgradeRequiredException ex,
+            HttpServletRequest request
+    ) {
+        HttpStatus status = HttpStatus.PAYMENT_REQUIRED; // 402
+
+        ApiError body = ApiError.of(
+                status,
+                "UPGRADE_REQUIRED",
+                "This feature requires " + ex.getRequiredPlan() + " plan",
+                request.getRequestURI()
+        );
+
+        return ResponseEntity.status(status).body(body);
+    }
+
     @ExceptionHandler({
             AlreadyExistsException.class,
             DeactivateException.class,

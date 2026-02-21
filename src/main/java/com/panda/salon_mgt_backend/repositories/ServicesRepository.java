@@ -62,5 +62,5 @@ public interface ServicesRepository extends JpaRepository<Services, Long> {
             @Param("salon") Salon salon
     );
 
-
+    long countBySalon(Salon salon);
 }

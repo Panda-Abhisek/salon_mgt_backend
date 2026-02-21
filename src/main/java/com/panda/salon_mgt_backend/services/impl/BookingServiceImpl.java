@@ -13,6 +13,7 @@ import com.panda.salon_mgt_backend.services.AvailabilityService;
 import com.panda.salon_mgt_backend.services.BookingService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
 import com.panda.salon_mgt_backend.utils.TenantGuard;
+import com.panda.salon_mgt_backend.utils.subscription.PlanGuard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -43,6 +44,7 @@ public class BookingServiceImpl implements BookingService {
     private final AvailabilityService availabilityService;
     private final TenantGuard tenantGuard;
     private final TenantContext tenantContext;
+    private final PlanGuard planGuard;
 
     private void assertTransitionAllowed(
             BookingStatus from,
@@ -512,6 +514,9 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional(readOnly = true)
     public AdminDashboardResponse getAdminDashboard(Authentication auth) {
+        if (!planGuard.isPro(auth)) {
+            throw new AccessDeniedException("Analytics requires PRO plan.");
+        }
         User user = tenantContext.getCurrentUser(auth);
 
         if (!user.hasRole("ROLE_SALON_ADMIN")) {
