@@ -18,60 +18,78 @@ import java.util.List;
 @Slf4j
 public class SubscriptionExpiryJob {
 
+    private static final Duration GRACE_WINDOW = Duration.ofDays(7);
+
     private final SubscriptionRepository subscriptionRepository;
     private final PlanRepository planRepository;
 
     @Transactional
-    @Scheduled(cron = "0 0 2 * * *") // daily at 2AM
+    @Scheduled(cron = "0 0 2 * * *")
     public void expireSubscriptions() {
 
         Instant now = Instant.now();
 
-        List<Subscription> expired = subscriptionRepository
-                .findAll().stream()
-                .filter(sub ->
-                        sub.getStatus() == SubscriptionStatus.ACTIVE &&
-                        sub.getEndDate() != null &&
-                        sub.getEndDate().isBefore(now)
-                )
-                .toList();
-
-        if (expired.isEmpty()) return;
+        List<Subscription> subs = subscriptionRepository.findAll();
 
         Plan freePlan = planRepository.findByType(PlanType.FREE)
                 .orElseThrow();
 
-        for (Subscription sub : expired) {
-            Salon salon = sub.getSalon();
-            PlanType oldPlan = sub.getPlan().getType();
-            Long salonId = salon.getSalonId();
+        for (Subscription sub : subs) {
 
-            // 1️⃣ Mark expired
-            sub.setStatus(SubscriptionStatus.EXPIRED);
+            if (sub.getEndDate() == null) continue;
 
-            log.info("subscription.expired salonId={} plan={} expiredAt={}",
-                    salonId,
-                    oldPlan,
-                    Instant.now()
-            );
+            // -------------------------------
+            // 1️⃣ ACTIVE → GRACE
+            // -------------------------------
+            if (sub.getStatus() == SubscriptionStatus.ACTIVE &&
+                    sub.getEndDate().isBefore(now)) {
 
-            // 2️⃣ Assign FREE fallback
-            Subscription fallback = Subscription.builder()
-                    .salon(salon)
-                    .plan(freePlan)
-                    .status(SubscriptionStatus.ACTIVE)
-                    .startDate(now)
-                    .endDate(now.plus(Duration.ofDays(3650)))
-                    .build();
+                sub.setStatus(SubscriptionStatus.GRACE);
 
-            subscriptionRepository.save(fallback);
+                log.info("subscription.entered_grace salonId={} plan={} graceStart={}",
+                        sub.getSalon().getSalonId(),
+                        sub.getPlan().getType(),
+                        now
+                );
+            }
 
-            log.info("subscription.fallback salonId={} newPlan=FREE activatedAt={}",
-                    salonId,
-                    now
-            );
+            // -------------------------------
+            // 2️⃣ GRACE → EXPIRED + FREE fallback
+            // -------------------------------
+            else if (sub.getStatus() == SubscriptionStatus.GRACE) {
+
+                Instant graceEnd = sub.getEndDate().plus(GRACE_WINDOW);
+
+                if (graceEnd.isBefore(now)) {
+
+                    Salon salon = sub.getSalon();
+                    PlanType oldPlan = sub.getPlan().getType();
+
+                    sub.setStatus(SubscriptionStatus.EXPIRED);
+
+                    log.info("subscription.expired salonId={} plan={} expiredAt={}",
+                            salon.getSalonId(),
+                            oldPlan,
+                            now
+                    );
+
+                    // FREE fallback
+                    Subscription fallback = Subscription.builder()
+                            .salon(salon)
+                            .plan(freePlan)
+                            .status(SubscriptionStatus.ACTIVE)
+                            .startDate(now)
+                            .endDate(now.plus(Duration.ofDays(3650)))
+                            .build();
+
+                    subscriptionRepository.save(fallback);
+
+                    log.info("subscription.fallback salonId={} newPlan=FREE activatedAt={}",
+                            salon.getSalonId(),
+                            now
+                    );
+                }
+            }
         }
-
-        log.info("Expired {} subscriptions", expired.size());
     }
 }

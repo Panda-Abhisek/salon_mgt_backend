@@ -61,4 +61,9 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
             AND s.plan.type <> 'FREE'
             """)
     long countActivePaid();
+
+    Optional<Subscription> findTopBySalonAndStatusInOrderByStartDateDesc(
+            Salon salon,
+            List<SubscriptionStatus> statuses
+    );
 }

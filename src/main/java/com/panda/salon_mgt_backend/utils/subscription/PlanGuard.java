@@ -10,6 +10,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
 @RequiredArgsConstructor
 public class PlanGuard {
@@ -17,31 +19,34 @@ public class PlanGuard {
     private final TenantContext tenantContext;
     private final SubscriptionRepository subscriptionRepository;
 
-    private Subscription getActiveSub(Authentication auth) {
+    private Subscription getEffectiveSub(Authentication auth) {
         Salon salon = tenantContext.getSalon(auth);
 
         return subscriptionRepository
-                .findBySalonAndStatus(salon, SubscriptionStatus.ACTIVE)
+                .findTopBySalonAndStatusInOrderByStartDateDesc(
+                        salon,
+                        List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.GRACE)
+                )
                 .orElseThrow(() -> new IllegalStateException("No active subscription"));
     }
 
     // --------- CHECKERS ---------
 
     public boolean isFree(Authentication auth) {
-        return getActiveSub(auth).getPlan().getType() == PlanType.FREE;
+        return getEffectiveSub(auth).getPlan().getType() == PlanType.FREE;
     }
 
     public boolean isPro(Authentication auth) {
-        PlanType code = getActiveSub(auth).getPlan().getType();
+        PlanType code = getEffectiveSub(auth).getPlan().getType();
         return code == PlanType.PRO || code == PlanType.PREMIUM;
     }
 
     public boolean isPremium(Authentication auth) {
-        return getActiveSub(auth).getPlan().getType() == PlanType.PREMIUM;
+        return getEffectiveSub(auth).getPlan().getType() == PlanType.PREMIUM;
     }
 
     public PlanType currentPlan(Authentication auth) {
-        return getActiveSub(auth).getPlan().getType();
+        return getEffectiveSub(auth).getPlan().getType();
     }
 
     // --------- ENFORCERS (🔥 PAYWALL METHODS) ---------
@@ -65,7 +70,7 @@ public class PlanGuard {
     }
 
     public Plan getCurrentPlan(Authentication auth) {
-        return getActiveSub(auth).getPlan();
+        return getEffectiveSub(auth).getPlan();
     }
 
     public int maxStaff(Authentication auth) {
