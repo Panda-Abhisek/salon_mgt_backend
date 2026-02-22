@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+import static com.panda.salon_mgt_backend.models.SubscriptionStatus.*;
+
 @Component
 @RequiredArgsConstructor
 public class PlanGuard {
@@ -25,7 +27,7 @@ public class PlanGuard {
         return subscriptionRepository
                 .findTopBySalonAndStatusInOrderByStartDateDesc(
                         salon,
-                        List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.GRACE)
+                        List.of(TRIAL, ACTIVE, GRACE)
                 )
                 .orElseThrow(() -> new IllegalStateException("No active subscription"));
     }

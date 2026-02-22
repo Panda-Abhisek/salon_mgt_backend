@@ -11,6 +11,7 @@ import com.panda.salon_mgt_backend.repositories.SalonRepository;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import com.panda.salon_mgt_backend.services.SalonService;
 import com.panda.salon_mgt_backend.services.UserService;
+import com.panda.salon_mgt_backend.utils.subscription.TrialPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -51,18 +52,20 @@ public class SalonServiceImpl implements SalonService {
                 .orElseThrow(() -> new ResourceNotFoundException("ROLE_SALON_ADMIN not found"));
         user.getRoles().add(salonAdminRole);
 
-        // 2️⃣ Assign FREE plan automatically
-        Plan freePlan = planRepository.findByType(PlanType.FREE)
-                .orElseThrow(() -> new IllegalStateException("FREE plan not bootstrapped"));
+        // 2️⃣ Assign Trial plan automatically
+        Plan trialPlan = planRepository.findByType(PlanType.PRO).orElseThrow();
 
-        Subscription subscription = Subscription.builder()
-                .salon(savedSalon)
-                .plan(freePlan)
-                .status(SubscriptionStatus.ACTIVE)
-                .startDate(Instant.now())
+        Instant now = Instant.now();
+
+        Subscription trial = Subscription.builder()
+                .salon(salon)
+                .plan(trialPlan)
+                .status(SubscriptionStatus.TRIAL)
+                .startDate(now)
+                .endDate(now.plus(TrialPolicy.TRIAL_DURATION))
                 .build();
 
-        subscriptionRepository.save(subscription);
+        subscriptionRepository.save(trial);
 
         return mapToResponse(savedSalon);
     }

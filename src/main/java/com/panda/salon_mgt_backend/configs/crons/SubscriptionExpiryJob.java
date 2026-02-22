@@ -38,6 +38,31 @@ public class SubscriptionExpiryJob {
 
             if (sub.getEndDate() == null) continue;
 
+            // TRIAL expiry (no grace)
+            if (sub.getStatus() == SubscriptionStatus.TRIAL &&
+                    sub.getEndDate().isBefore(now)) {
+
+                sub.setStatus(SubscriptionStatus.EXPIRED);
+
+                log.info("subscription.trial_expired salonId={} expiredAt={}",
+                        sub.getSalon().getSalonId(),
+                        now
+                );
+
+                // FREE fallback
+                Subscription fallback = Subscription.builder()
+                        .salon(sub.getSalon())
+                        .plan(freePlan)
+                        .status(SubscriptionStatus.ACTIVE)
+                        .startDate(now)
+                        .endDate(now.plus(Duration.ofDays(3650)))
+                        .build();
+
+                subscriptionRepository.save(fallback);
+
+                continue;
+            }
+
             // -------------------------------
             // 1️⃣ ACTIVE → GRACE
             // -------------------------------
