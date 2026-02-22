@@ -24,6 +24,8 @@ public class Plan {
 
     // Feature limits
     private Integer maxStaff;
+    private Integer maxServices;
+    private Integer maxBookings;
     private Boolean analyticsEnabled;
     private Boolean smartAlertsEnabled;
 

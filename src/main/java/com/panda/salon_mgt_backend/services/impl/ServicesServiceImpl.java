@@ -1,7 +1,6 @@
 package com.panda.salon_mgt_backend.services.impl;
 
 import com.panda.salon_mgt_backend.exceptions.AlreadyExistsException;
-import com.panda.salon_mgt_backend.exceptions.CanNotException;
 import com.panda.salon_mgt_backend.exceptions.DeactivateException;
 import com.panda.salon_mgt_backend.exceptions.ResourceNotFoundException;
 import com.panda.salon_mgt_backend.models.Salon;
@@ -18,7 +17,6 @@ import com.panda.salon_mgt_backend.services.ServicesService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
 import com.panda.salon_mgt_backend.utils.TenantGuard;
 import com.panda.salon_mgt_backend.utils.subscription.PlanGuard;
-import com.panda.salon_mgt_backend.utils.subscription.PlanLimits;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -72,14 +70,9 @@ public class ServicesServiceImpl implements ServicesService {
         service.setActive(true);
         service.setSalon(salon);
 
-        if (planGuard.isFree(authentication)) {
-//            Salon salon = tenantContext.getSalon(authentication);
-            long count = servicesRepository.countBySalon(salon);
-
-            if (count >= PlanLimits.FREE_MAX_SERVICES) {
-                throw new CanNotException("Free plan allows max 5 services. Upgrade required.");
-            }
-        }
+        long count = servicesRepository.countBySalonAndActiveTrue(salon);
+        System.out.println("Active services count for salon " + salon.getSalonId() + ": " + count);
+        planGuard.assertServicesLimit(authentication, count);
 
         // 4. Persist
         Services saved = servicesRepository.save(service);

@@ -73,12 +73,28 @@ public class PlanGuard {
         return limit != null ? limit : Integer.MAX_VALUE;
     }
 
+    public int maxServices(Authentication auth) {
+        Integer limit = getCurrentPlan(auth).getMaxServices();
+        return limit != null ? limit : Integer.MAX_VALUE;
+    }
+
     public void assertStaffLimit(Authentication auth, long currentCount) {
         int limit = maxStaff(auth);
 
         if (currentCount >= limit) {
             throw new PlanLimitExceededException(
                     "Staff limit reached for your current plan",
+                    limit
+            );
+        }
+    }
+
+    public void assertServicesLimit(Authentication auth, long currentCount) {
+        int limit = maxServices(auth);
+
+        if (currentCount >= limit) {
+            throw new PlanLimitExceededException(
+                    "Service limit reached for your current plan",
                     limit
             );
         }

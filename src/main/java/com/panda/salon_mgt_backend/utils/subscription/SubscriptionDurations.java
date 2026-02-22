@@ -8,7 +8,7 @@ public class SubscriptionDurations {
     public static Duration durationFor(PlanType type) {
         return switch (type) {
             case FREE -> Duration.ofDays(3650); // effectively unlimited
-            case PRO, PREMIUM -> Duration.ofMinutes(2);
+            case PRO, PREMIUM -> Duration.ofDays(30);
         };
     }
 }

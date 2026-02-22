@@ -9,5 +9,7 @@ public record SubscriptionResponse(
         PlanType plan,
         SubscriptionStatus status,
         Instant startDate,
-        Instant endDate
+        Instant endDate,
+        PlanLimitsDto limits,
+        PlanFeaturesDto features
 ) {}
