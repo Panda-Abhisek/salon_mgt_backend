@@ -66,4 +66,28 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
             Salon salon,
             List<SubscriptionStatus> statuses
     );
+
+    @Query("""
+            SELECT COUNT(s)
+            FROM Subscription s
+            WHERE s.status = 'TRIAL'
+            """)
+    long countActiveTrials();
+
+    @Query("""
+            SELECT COUNT(s)
+            FROM Subscription s
+            WHERE s.status = 'TRIAL'
+            AND s.endDate <= :cutoff
+            """)
+    long countTrialsEndingBefore(@Param("cutoff") Instant cutoff);
+
+    @Query("""
+            SELECT COUNT(s)
+            FROM Subscription s
+            WHERE s.status = 'ACTIVE'
+            AND s.plan.type <> 'FREE'
+            AND s.startDate >= :since
+            """)
+    long countPaidActivationsSince(@Param("since") Instant since);
 }

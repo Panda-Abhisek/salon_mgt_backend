@@ -9,5 +9,6 @@ public record BillingMetricsResponse(
         Map<PlanType, Long> activeByPlan,
         long expiringSoon,
         long expiredLast7Days,
-        ChurnDto churn
+        ChurnDto churn,
+        ConversionMetrics conversion
 ) {}

@@ -3,6 +3,7 @@ package com.panda.salon_mgt_backend.services.analytics;
 import com.panda.salon_mgt_backend.models.PlanType;
 import com.panda.salon_mgt_backend.payloads.BillingMetricsResponse;
 import com.panda.salon_mgt_backend.payloads.ChurnDto;
+import com.panda.salon_mgt_backend.payloads.ConversionMetrics;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,12 +38,30 @@ public class BillingMetricsServiceImpl implements BillingMetricsService {
             long activePaid = subscriptionRepository.countActivePaid();
             ChurnDto churn = calculatePaidChurn(paidExpiredLast7Days, activePaid);
 
+            Instant trialsSoonCutoff = now.plus(3, ChronoUnit.DAYS);
+
+            long activeTrials = subscriptionRepository.countActiveTrials();
+            long trialsEndingSoon = subscriptionRepository.countTrialsEndingBefore(trialsSoonCutoff);
+            long conversions7d = subscriptionRepository.countPaidActivationsSince(last7Days);
+
+            double conversionRate = activeTrials == 0
+                    ? 0.0
+                    : (double) conversions7d / activeTrials;
+
+            ConversionMetrics conversion = new ConversionMetrics(
+                    activeTrials,
+                    trialsEndingSoon,
+                    conversions7d,
+                    Math.round(conversionRate * 100.0) / 100.0
+            );
+
             return new BillingMetricsResponse(
                     totalActive,
                     activeByPlan,
                     expiringSoon,
                     paidExpiredLast7Days,
-                    churn
+                    churn,
+                    conversion
             );
 
         } catch (Exception ex) {
@@ -78,7 +97,8 @@ public class BillingMetricsServiceImpl implements BillingMetricsService {
                 Map.of(),
                 0,
                 0,
-                new ChurnDto(0, 0.0)
+                new ChurnDto(0, 0.0),
+                new ConversionMetrics(0, 0, 0, 0.0)
         );
     }
 }
