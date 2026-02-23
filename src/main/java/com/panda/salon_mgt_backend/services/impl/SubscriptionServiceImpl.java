@@ -11,6 +11,7 @@ import com.panda.salon_mgt_backend.utils.subscription.SubscriptionDurations;
 import com.panda.salon_mgt_backend.utils.subscription.SubscriptionPolicy;
 import com.panda.salon_mgt_backend.utils.subscription.TrialPolicy;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ import java.util.List;
 
 import static com.panda.salon_mgt_backend.models.SubscriptionStatus.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -37,8 +39,11 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         Salon salon = tenantContext.getSalon(auth);
 
         return subscriptionRepository
-                .findBySalonAndStatus(salon, ACTIVE)
-                .orElse(null);
+                .findTopBySalonAndStatusInOrderByStartDateDesc(
+                        salon,
+                        List.of(TRIAL, ACTIVE, GRACE)
+                )
+                .orElseThrow(() -> new IllegalStateException("No subscription found"));
     }
 
     @Override
@@ -52,7 +57,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                         salon,
                         List.of(TRIAL, ACTIVE, GRACE)
                 )
-                .orElse(null);
+                .orElseThrow(() -> new IllegalStateException("No active or trial subscription found"));
 
         // 1️⃣ Validate upgrade rules
         subscriptionPolicy.validateUpgrade(current, targetPlan);
@@ -101,13 +106,13 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         Subscription current = subscriptionRepository
                 .findBySalonAndStatus(salon, ACTIVE)
-                .orElseThrow();
+                .orElseThrow(() -> new IllegalStateException("No active subscription found"));
 
         // expire FREE
         current.setStatus(SubscriptionStatus.EXPIRED);
         current.setEndDate(Instant.now());
 
-        Plan trialPlan = planRepository.findByType(PlanType.PRO).orElseThrow();
+        Plan trialPlan = planRepository.findByType(PlanType.PRO).orElseThrow(() -> new IllegalStateException("Trial plan not found"));
 
         Instant now = Instant.now();
 

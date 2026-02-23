@@ -41,6 +41,7 @@ public class SubscriptionController {
         return map(upgraded);
     }
 
+    @PreAuthorize("hasRole('SALON_ADMIN')")
     @PostMapping("/start-trial")
     public SubscriptionResponse startTrial(Authentication auth) {
         Subscription sub = subscriptionService.startTrial(auth);
