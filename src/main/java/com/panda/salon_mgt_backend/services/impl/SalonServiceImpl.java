@@ -11,12 +11,12 @@ import com.panda.salon_mgt_backend.repositories.SalonRepository;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import com.panda.salon_mgt_backend.services.SalonService;
 import com.panda.salon_mgt_backend.services.UserService;
-import com.panda.salon_mgt_backend.utils.subscription.TrialPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 
 @Service
@@ -52,20 +52,22 @@ public class SalonServiceImpl implements SalonService {
                 .orElseThrow(() -> new ResourceNotFoundException("ROLE_SALON_ADMIN not found"));
         user.getRoles().add(salonAdminRole);
 
-        // 2️⃣ Assign Trial plan automatically
-        Plan trialPlan = planRepository.findByType(PlanType.PRO).orElseThrow();
+        // 2️⃣ Assign FREE plan by default
+        Plan freePlan = planRepository.findByType(PlanType.FREE)
+                .orElseThrow(() -> new IllegalStateException("FREE plan missing"));
 
         Instant now = Instant.now();
 
-        Subscription trial = Subscription.builder()
-                .salon(salon)
-                .plan(trialPlan)
-                .status(SubscriptionStatus.TRIAL)
+        Subscription freeSub = Subscription.builder()
+                .salon(savedSalon)
+                .plan(freePlan)
+                .status(SubscriptionStatus.ACTIVE)
                 .startDate(now)
-                .endDate(now.plus(TrialPolicy.TRIAL_DURATION))
+                // FREE is effectively unlimited
+                .endDate(now.plus(Duration.ofDays(3650)))
                 .build();
 
-        subscriptionRepository.save(trial);
+        subscriptionRepository.save(freeSub);
 
         return mapToResponse(savedSalon);
     }

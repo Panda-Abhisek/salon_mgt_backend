@@ -41,6 +41,12 @@ public class SubscriptionController {
         return map(upgraded);
     }
 
+    @PostMapping("/start-trial")
+    public SubscriptionResponse startTrial(Authentication auth) {
+        Subscription sub = subscriptionService.startTrial(auth);
+        return map(sub);
+    }
+
     private SubscriptionResponse map(Subscription sub) {
         if (sub == null) return null;
         Plan plan = sub.getPlan();

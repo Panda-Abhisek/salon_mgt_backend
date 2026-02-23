@@ -90,4 +90,12 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
             AND s.startDate >= :since
             """)
     long countPaidActivationsSince(@Param("since") Instant since);
+
+    @Query("""
+                SELECT COUNT(s) > 0
+                FROM Subscription s
+                WHERE s.salon = :salon
+                AND s.status = 'TRIAL'
+            """)
+    boolean hasUsedTrial(@Param("salon") Salon salon);
 }
