@@ -1,51 +1,123 @@
 package com.panda.salon_mgt_backend.services.impl;
 
-import com.panda.salon_mgt_backend.configs.MockPaymentProcessor;
-import com.panda.salon_mgt_backend.models.BillingStatus;
-import com.panda.salon_mgt_backend.models.BillingTransaction;
-import com.panda.salon_mgt_backend.models.Plan;
-import com.panda.salon_mgt_backend.models.Salon;
+import com.panda.salon_mgt_backend.models.*;
+import com.panda.salon_mgt_backend.payloads.BillingResult;
+import com.panda.salon_mgt_backend.payloads.CheckoutSession;
+import com.panda.salon_mgt_backend.payloads.PaymentIntent;
 import com.panda.salon_mgt_backend.repositories.BillingTransactionRepository;
+import com.panda.salon_mgt_backend.repositories.PlanRepository;
+import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
+import com.panda.salon_mgt_backend.services.BillingProvider;
 import com.panda.salon_mgt_backend.services.BillingService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
+import com.panda.salon_mgt_backend.utils.subscription.SubscriptionDurations;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
+import static com.panda.salon_mgt_backend.models.SubscriptionStatus.*;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BillingServiceImpl implements BillingService {
 
     private final TenantContext tenantContext;
     private final BillingTransactionRepository billingRepo;
-    private final MockPaymentProcessor paymentProcessor;
+    private final BillingProvider billingProvider;
+    private final SubscriptionRepository subscriptionRepository;
+    private final PlanRepository planRepository;
 
     @Override
-    public BillingTransaction charge(Authentication auth, Plan plan) {
+    @Transactional
+    public PaymentIntent createPayment(Authentication auth, Plan newPlan) {
 
         Salon salon = tenantContext.getSalon(auth);
 
-        BillingTransaction tx = BillingTransaction.builder()
-                .salon(salon)
-                .planType(plan.getType())
-                .status(BillingStatus.PENDING)
-                .amount(plan.getPriceMonthly())
-                .createdAt(Instant.now())
-                .build();
-
-        tx = billingRepo.save(tx);
-
-        boolean success = paymentProcessor.processPayment(tx.getAmount());
-
-        if (success) {
-            tx.setStatus(BillingStatus.PAID);
-            tx.setPaidAt(Instant.now());
-        } else {
-            tx.setStatus(BillingStatus.FAILED);
+        if (salon == null) {
+            throw new IllegalStateException("Cannot create payment without a salon");
         }
 
-        return billingRepo.save(tx);
+        BillingTransaction tx = new BillingTransaction();
+        tx.setSalon(salon);
+        tx.setPlan(newPlan.getType());
+        tx.setAmount(newPlan.getPriceMonthly());
+        tx.setStatus(BillingStatus.CREATED);
+        tx.setProvider("FAKE");
+        tx.setCreatedAt(Instant.now());
+
+        billingRepo.save(tx);
+
+        CheckoutSession session = billingProvider.createCheckout(salon, newPlan, tx);
+
+        tx.setExternalOrderId(session.externalOrderId());
+        tx.setStatus(BillingStatus.PENDING);
+
+        billingRepo.save(tx);
+
+        return new PaymentIntent(tx, session.checkoutUrl());
+    }
+
+    @Transactional
+    @Override
+    public void handlePaymentResult(BillingResult result) {
+
+        BillingTransaction tx = billingRepo
+                .findByExternalOrderId(result.externalOrderId())
+                .orElseThrow(() -> new IllegalStateException("Transaction not found"));
+        if (tx.getStatus() == BillingStatus.PAID) {
+            return; // already processed
+        }
+        if (!result.success()) {
+            tx.setStatus(BillingStatus.FAILED);
+            return;
+        }
+
+        // Mark transaction paid
+        tx.setStatus(BillingStatus.PAID);
+        tx.setExternalPaymentId(result.externalPaymentId());
+        tx.setCompletedAt(Instant.now());
+
+        activateSubscription(tx); // 🔥 THE BRIDGE
+    }
+
+    @Transactional
+    void activateSubscription(BillingTransaction tx) {
+
+        Salon salon = tx.getSalon();
+
+        // expire existing sub
+        subscriptionRepository
+                .findTopBySalonAndStatusInOrderByStartDateDesc(
+                        salon,
+                        List.of(TRIAL, ACTIVE, GRACE)
+                )
+                .ifPresent(current -> {
+                    current.setStatus(SubscriptionStatus.EXPIRED);
+                    current.setEndDate(Instant.now());
+                });
+
+        Plan plan = planRepository.findByType(tx.getPlan())
+                .orElseThrow();
+
+        Instant now = Instant.now();
+        Duration duration = SubscriptionDurations.durationFor(plan.getType());
+
+        Subscription newSub = Subscription.builder()
+                .salon(salon)
+                .plan(plan)
+                .status(SubscriptionStatus.ACTIVE)
+                .startDate(now)
+                .endDate(now.plus(duration))
+                .externalPaymentId(tx.getExternalPaymentId())
+                .build();
+
+        subscriptionRepository.save(newSub);
     }
 }

@@ -1,9 +1,14 @@
 package com.panda.salon_mgt_backend.services;
 
-import com.panda.salon_mgt_backend.models.BillingTransaction;
 import com.panda.salon_mgt_backend.models.Plan;
+import com.panda.salon_mgt_backend.payloads.BillingResult;
+import com.panda.salon_mgt_backend.payloads.PaymentIntent;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 
 public interface BillingService {
-    BillingTransaction charge(Authentication auth, Plan plan);
+    @Transactional
+    void handlePaymentResult(BillingResult result);
+
+    PaymentIntent createPayment(Authentication auth, Plan newPlan);
 }

@@ -2,12 +2,14 @@ package com.panda.salon_mgt_backend.services.impl;
 
 import com.panda.salon_mgt_backend.exceptions.CanNotException;
 import com.panda.salon_mgt_backend.models.*;
+import com.panda.salon_mgt_backend.payloads.BillingIntentResponse;
+import com.panda.salon_mgt_backend.payloads.PaymentIntent;
 import com.panda.salon_mgt_backend.repositories.PlanRepository;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
+import com.panda.salon_mgt_backend.services.BillingProvider;
 import com.panda.salon_mgt_backend.services.BillingService;
 import com.panda.salon_mgt_backend.services.SubscriptionService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
-import com.panda.salon_mgt_backend.utils.subscription.SubscriptionDurations;
 import com.panda.salon_mgt_backend.utils.subscription.SubscriptionPolicy;
 import com.panda.salon_mgt_backend.utils.subscription.TrialPolicy;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +18,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -33,6 +34,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final TenantContext tenantContext;
     private final SubscriptionPolicy subscriptionPolicy;
     private final BillingService billingService;
+    private final BillingProvider billingProvider;
 
     @Override
     public Subscription getCurrentSubscription(Authentication auth) {
@@ -48,50 +50,28 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public Subscription upgradePlan(Authentication auth, PlanType targetPlan) {
+    public BillingIntentResponse upgradePlan(Authentication auth, PlanType targetPlan) {
 
         Salon salon = tenantContext.getSalon(auth);
+        if (salon == null) {
+            throw new CanNotException("Create a salon before upgrading plans");
+        }
 
         Subscription current = subscriptionRepository
                 .findTopBySalonAndStatusInOrderByStartDateDesc(
                         salon,
                         List.of(TRIAL, ACTIVE, GRACE)
                 )
-                .orElseThrow(() -> new IllegalStateException("No active or trial subscription found"));
+                .orElseThrow(() -> new IllegalStateException("No active subscription found"));
 
-        // 1️⃣ Validate upgrade rules
         subscriptionPolicy.validateUpgrade(current, targetPlan);
 
-        // 2️⃣ Fetch target plan
         Plan newPlan = planRepository.findByType(targetPlan)
-                .orElseThrow(() -> new IllegalStateException("Plan not found"));
+                .orElseThrow(() -> new IllegalStateException("Target plan not found"));
 
-        // 3️⃣ BILLING (new)
-        BillingTransaction tx = billingService.charge(auth, newPlan);
+        PaymentIntent intent = billingService.createPayment(auth, newPlan);
 
-        if (tx.getStatus() != BillingStatus.PAID) {
-            throw new IllegalStateException("Payment failed");
-        }
-
-        // 4️⃣ Expire existing subscription
-        if (current != null) {
-            current.setStatus(SubscriptionStatus.EXPIRED);
-            current.setEndDate(Instant.now());
-        }
-
-        // 5️⃣ Activate new subscription
-        Instant now = Instant.now();
-        Duration duration = SubscriptionDurations.durationFor(newPlan.getType());
-
-        Subscription upgraded = Subscription.builder()
-                .salon(salon)
-                .plan(newPlan)
-                .status(ACTIVE)
-                .startDate(now)
-                .endDate(now.plus(duration))
-                .build();
-
-        return subscriptionRepository.save(upgraded);
+        return new BillingIntentResponse(intent.checkoutUrl());
     }
 
     @Transactional

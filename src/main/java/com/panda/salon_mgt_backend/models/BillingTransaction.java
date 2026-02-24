@@ -7,11 +7,8 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "billing_transactions")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor
 public class BillingTransaction {
 
     @Id
@@ -19,23 +16,26 @@ public class BillingTransaction {
     private Long id;
 
     // Tenant
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "salon_id", nullable = false)
     private Salon salon;
 
-    // Plan purchased
+    // Plan being purchased
     @Enumerated(EnumType.STRING)
-    private PlanType planType;
+    private PlanType plan;
 
-    // Billing state
+    // Amount in paise
+    @Column(nullable = false)
+    private Integer amount;
+
     @Enumerated(EnumType.STRING)
     private BillingStatus status;
 
-    private Integer amount; // paise later (keep int for now)
+    // Provider metadata
+    private String provider;          // RAZORPAY / STRIPE
+    private String externalPaymentId; // payment id
+    private String externalOrderId;   // order id
 
     private Instant createdAt;
-    private Instant paidAt;
-
-    // Future gateway integration
-    private String externalPaymentId;
+    private Instant completedAt;
 }
