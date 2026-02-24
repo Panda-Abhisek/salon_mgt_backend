@@ -32,7 +32,8 @@ public class BillingTransaction {
     private BillingStatus status;
 
     // Provider metadata
-    private String provider;          // RAZORPAY / STRIPE
+    @Enumerated(EnumType.STRING)
+    private BillingProviderType provider;          // RAZORPAY / STRIPE
     private String externalPaymentId; // payment id
     private String externalOrderId;   // order id
 

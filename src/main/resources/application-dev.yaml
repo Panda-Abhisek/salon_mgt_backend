@@ -65,3 +65,5 @@ app:
 #    com:
 #      panda:
 #        salon_mgt_backend: trace
+billing:
+  provider: FAKE

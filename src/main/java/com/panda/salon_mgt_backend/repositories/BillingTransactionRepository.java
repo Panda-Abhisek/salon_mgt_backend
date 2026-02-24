@@ -11,4 +11,6 @@ public interface BillingTransactionRepository extends JpaRepository<BillingTrans
     List<BillingTransaction> findBySalonOrderByCreatedAtDesc(Salon salon);
 
     Optional<BillingTransaction> findByExternalOrderId(String externalOrderId);
+
+    List<BillingTransaction> findTop20ByOrderByCreatedAtDesc();
 }

@@ -2,8 +2,10 @@ package com.panda.salon_mgt_backend.services.analytics;
 
 import com.panda.salon_mgt_backend.models.PlanType;
 import com.panda.salon_mgt_backend.payloads.BillingMetricsResponse;
+import com.panda.salon_mgt_backend.payloads.BillingTransactionDto;
 import com.panda.salon_mgt_backend.payloads.ChurnDto;
 import com.panda.salon_mgt_backend.payloads.ConversionMetrics;
+import com.panda.salon_mgt_backend.repositories.BillingTransactionRepository;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -20,6 +23,16 @@ import java.util.Map;
 public class BillingMetricsServiceImpl implements BillingMetricsService {
 
     private final SubscriptionRepository subscriptionRepository;
+    private final BillingTransactionRepository billingRepo;
+
+    @Override
+    public List<BillingTransactionDto> recent() {
+        return billingRepo
+                .findTop20ByOrderByCreatedAtDesc()
+                .stream()
+                .map(BillingTransactionDto::from)
+                .toList();
+    }
 
     @Override
     public BillingMetricsResponse getMetrics() {

@@ -1,5 +1,6 @@
 package com.panda.salon_mgt_backend.services.impl;
 
+import com.panda.salon_mgt_backend.configs.billing.BillingProviderFactory;
 import com.panda.salon_mgt_backend.models.*;
 import com.panda.salon_mgt_backend.payloads.BillingResult;
 import com.panda.salon_mgt_backend.payloads.CheckoutSession;
@@ -30,7 +31,7 @@ public class BillingServiceImpl implements BillingService {
 
     private final TenantContext tenantContext;
     private final BillingTransactionRepository billingRepo;
-    private final BillingProvider billingProvider;
+    private final BillingProviderFactory providerFactory;
     private final SubscriptionRepository subscriptionRepository;
     private final PlanRepository planRepository;
 
@@ -44,12 +45,14 @@ public class BillingServiceImpl implements BillingService {
             throw new IllegalStateException("Cannot create payment without a salon");
         }
 
+        BillingProvider billingProvider = providerFactory.get();
+
         BillingTransaction tx = new BillingTransaction();
         tx.setSalon(salon);
         tx.setPlan(newPlan.getType());
         tx.setAmount(newPlan.getPriceMonthly());
         tx.setStatus(BillingStatus.CREATED);
-        tx.setProvider("FAKE");
+        tx.setProvider(billingProvider.name());
         tx.setCreatedAt(Instant.now());
 
         billingRepo.save(tx);
@@ -60,7 +63,11 @@ public class BillingServiceImpl implements BillingService {
         tx.setStatus(BillingStatus.PENDING);
 
         billingRepo.save(tx);
-
+        log.info("billing.intent.created salonId={} plan={} amount={}",
+                salon.getSalonId(),
+                newPlan.getType(),
+                newPlan.getPriceMonthly()
+        );
         return new PaymentIntent(tx, session.checkoutUrl());
     }
 
@@ -72,10 +79,18 @@ public class BillingServiceImpl implements BillingService {
                 .findByExternalOrderId(result.externalOrderId())
                 .orElseThrow(() -> new IllegalStateException("Transaction not found"));
         if (tx.getStatus() == BillingStatus.PAID) {
-            return; // already processed
+            log.info("Webhook replay ignored orderId={}", tx.getExternalOrderId());
+            return;
+        }
+        if (tx.getStatus() != BillingStatus.PENDING) {
+            log.warn("Invalid payment state transition orderId={} status={}",
+                    tx.getExternalOrderId(),
+                    tx.getStatus());
+            return;
         }
         if (!result.success()) {
             tx.setStatus(BillingStatus.FAILED);
+            log.warn("billing.payment.failed orderId={}", result.externalOrderId());
             return;
         }
 
@@ -83,6 +98,12 @@ public class BillingServiceImpl implements BillingService {
         tx.setStatus(BillingStatus.PAID);
         tx.setExternalPaymentId(result.externalPaymentId());
         tx.setCompletedAt(Instant.now());
+
+        log.info("billing.payment.success orderId={} paymentId={} salonId={}",
+                tx.getExternalOrderId(),
+                tx.getExternalPaymentId(),
+                tx.getSalon().getSalonId()
+        );
 
         activateSubscription(tx); // 🔥 THE BRIDGE
     }

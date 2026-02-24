@@ -1,4 +1,4 @@
-package com.panda.salon_mgt_backend.services.impl;
+package com.panda.salon_mgt_backend.configs.billing;
 
 import com.panda.salon_mgt_backend.models.BillingProviderType;
 import com.panda.salon_mgt_backend.models.BillingTransaction;
@@ -9,41 +9,26 @@ import com.panda.salon_mgt_backend.payloads.CheckoutSession;
 import com.panda.salon_mgt_backend.services.BillingProvider;
 import org.springframework.stereotype.Component;
 
-import java.util.UUID;
-
 @Component
-public class FakeBillingProvider implements BillingProvider {
+public class StripeBillingProvider implements BillingProvider {
 
     @Override
     public BillingProviderType name() {
-        return BillingProviderType.FAKE;
+        return BillingProviderType.STRIPE;
     }
 
     @Override
-    public CheckoutSession createCheckout(
-            Salon salon,
-            Plan plan,
-            BillingTransaction tx
-    ) {
-        String fakeOrderId = "fake_" + UUID.randomUUID();
-
-        return new CheckoutSession(
-                "http://localhost:5173/fake-success?orderId=" + fakeOrderId,
-                fakeOrderId
-        );
+    public CheckoutSession createCheckout(Salon salon, Plan plan, BillingTransaction tx) {
+        throw new UnsupportedOperationException("Stripe not implemented yet");
     }
 
     @Override
     public BillingResult verifyPayment(String payload, String signature) {
-        return new BillingResult(
-                payload,
-                "fake_payment",
-                true
-        );
+        throw new UnsupportedOperationException("Stripe not implemented yet");
     }
 
     @Override
     public boolean verifySignature(String payload, String signature) {
-        return true; // fake world, fake security
+        return false;
     }
 }
