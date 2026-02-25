@@ -11,7 +11,7 @@ public interface BillingProvider {
 
     BillingProviderType name(); // FAKE / RAZORPAY / STRIPE
 
-    boolean verifySignature(String payload, String signature);
+//    boolean verifySignature(String payload, String signature);
 
     CheckoutSession createCheckout(
             Salon salon,

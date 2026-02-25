@@ -12,10 +12,9 @@ import org.springframework.stereotype.Component;
 public class BillingProviderFactory {
 
     private final FakeBillingProvider fake;
-    private final RazorpayBillingProvider razorpay;
     private final StripeBillingProvider stripe;
 
-    @Value("${billing.provider:FAKE}")
+    @Value("${billing.provider}")
     private String provider;
 
     public BillingProvider get() {
@@ -23,7 +22,6 @@ public class BillingProviderFactory {
 
         return switch (type) {
             case FAKE -> fake;
-            case RAZORPAY -> razorpay;
             case STRIPE -> stripe;
         };
     }

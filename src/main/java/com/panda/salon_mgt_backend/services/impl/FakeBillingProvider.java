@@ -38,12 +38,12 @@ public class FakeBillingProvider implements BillingProvider {
         return new BillingResult(
                 payload,
                 "fake_payment",
-                true
+                true, false
         );
     }
 
-    @Override
-    public boolean verifySignature(String payload, String signature) {
-        return true; // fake world, fake security
-    }
+//    @Override
+//    public boolean verifySignature(String payload, String signature) {
+//        return false; // fake world, fake security
+//    }
 }

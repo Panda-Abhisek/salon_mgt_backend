@@ -65,10 +65,26 @@ app:
 #    com:
 #      panda:
 #        salon_mgt_backend: trace
-billing:
-  provider: RAZORPAY
+server:
+  error:
+    include-message: always
+    include-binding-errors: always
 
-razorpay:
-  key-id: ${RAZORPAY_KEY_ID}
-  key-secret: ${RAZORPAY_KEY_SECRET}
-  webhook-secret: ${RAZORPAY_WEBHOOK_SECRET}
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+    org.hibernate: WARN
+
+billing:
+  provider: STRIPE
+
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET_KEY}
+
+
+#razorpay:
+#  key-id: ${RAZORPAY_KEY_ID}
+#  key-secret: ${RAZORPAY_KEY_SECRET}
+#  webhook-secret: ${RAZORPAY_WEBHOOK_SECRET}

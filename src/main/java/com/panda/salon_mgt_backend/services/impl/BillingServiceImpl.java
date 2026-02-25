@@ -40,6 +40,8 @@ public class BillingServiceImpl implements BillingService {
     public PaymentIntent createPayment(Authentication auth, Plan newPlan) {
 
         Salon salon = tenantContext.getSalon(auth);
+        log.info("Salon: {}", salon);
+        log.info("Plan price: {}", newPlan.getPriceMonthly());
 
         if (salon == null) {
             throw new IllegalStateException("Cannot create payment without a salon");
@@ -71,41 +73,40 @@ public class BillingServiceImpl implements BillingService {
         return new PaymentIntent(tx, session.checkoutUrl());
     }
 
-    @Transactional
     @Override
+    @Transactional
     public void handlePaymentResult(BillingResult result) {
+        log.error("Webhook lookup for txId = {}", result.txId());
 
         BillingTransaction tx = billingRepo
-                .findByExternalOrderId(result.externalOrderId())
+                .findById(Long.parseLong(result.txId()))
                 .orElseThrow(() -> new IllegalStateException("Transaction not found"));
+
+        // Idempotency
         if (tx.getStatus() == BillingStatus.PAID) {
-            log.info("Webhook replay ignored orderId={}", tx.getExternalOrderId());
+            log.info("Webhook replay ignored txId={}", tx.getId());
             return;
         }
+
         if (tx.getStatus() != BillingStatus.PENDING) {
-            log.warn("Invalid payment state transition orderId={} status={}",
-                    tx.getExternalOrderId(),
+            log.warn("Invalid transition txId={} status={}",
+                    tx.getId(),
                     tx.getStatus());
             return;
         }
+
         if (!result.success()) {
             tx.setStatus(BillingStatus.FAILED);
-            log.warn("billing.payment.failed orderId={}", result.externalOrderId());
+            billingRepo.save(tx);
             return;
         }
 
-        // Mark transaction paid
         tx.setStatus(BillingStatus.PAID);
         tx.setExternalPaymentId(result.externalPaymentId());
         tx.setCompletedAt(Instant.now());
-
-        log.info("billing.payment.success orderId={} paymentId={} salonId={}",
-                tx.getExternalOrderId(),
-                tx.getExternalPaymentId(),
-                tx.getSalon().getSalonId()
-        );
-
-        activateSubscription(tx); // 🔥 THE BRIDGE
+        billingRepo.save(tx);
+        log.error("🔥🔥🔥 NEW BILLING CODE EXECUTED 🔥🔥🔥");
+        activateSubscription(tx);
     }
 
     @Transactional
