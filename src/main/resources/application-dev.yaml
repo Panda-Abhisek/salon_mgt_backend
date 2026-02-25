@@ -66,4 +66,9 @@ app:
 #      panda:
 #        salon_mgt_backend: trace
 billing:
-  provider: FAKE
+  provider: RAZORPAY
+
+razorpay:
+  key-id: ${RAZORPAY_KEY_ID}
+  key-secret: ${RAZORPAY_KEY_SECRET}
+  webhook-secret: ${RAZORPAY_WEBHOOK_SECRET}
