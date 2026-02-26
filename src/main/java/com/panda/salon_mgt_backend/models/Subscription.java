@@ -35,5 +35,13 @@ public class Subscription {
     private Instant endDate;
 
     // Future billing integrations
+    // First successful payment intent (used for refunds/support)
     private String externalPaymentId; // Stripe/Razorpay
+
+    // Stripe recurring linkage
+    @Column(name = "stripe_customer_id")
+    private String stripeCustomerId;
+
+    @Column(name = "stripe_subscription_id")
+    private String stripeSubscriptionId;
 }

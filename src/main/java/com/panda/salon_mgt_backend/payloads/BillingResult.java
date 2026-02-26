@@ -1,8 +1,11 @@
 package com.panda.salon_mgt_backend.payloads;
 
 public record BillingResult(
-        String txId,                // 🔥 internal transaction ID
-        String externalPaymentId,  // Stripe payment intent
+        String txId,
+        String externalPaymentId,
+        String stripeCustomerId,
+        String stripeSubscriptionId,
+        String stripeEventId,
         boolean success,
         boolean ignored
 ) {

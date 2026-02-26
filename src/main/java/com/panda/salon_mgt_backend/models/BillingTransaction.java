@@ -6,7 +6,13 @@ import lombok.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "billing_transactions")
+@Table(
+        name = "billing_transactions",
+        indexes = {
+                @Index(name = "idx_billing_status", columnList = "status"),
+                @Index(name = "idx_billing_external_payment", columnList = "externalPaymentId")
+        }
+)
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor
 public class BillingTransaction {
@@ -34,7 +40,9 @@ public class BillingTransaction {
     // Provider metadata
     @Enumerated(EnumType.STRING)
     private BillingProviderType provider;          // RAZORPAY / STRIPE
-    private String externalPaymentId; // payment id
+
+    @Column(name = "external_payment_id")
+    private String initialPaymentIntentId; // payment id
     private String externalOrderId;   // order id
 
     private Instant createdAt;

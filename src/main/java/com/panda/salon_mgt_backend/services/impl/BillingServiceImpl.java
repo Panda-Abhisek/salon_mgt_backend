@@ -7,6 +7,7 @@ import com.panda.salon_mgt_backend.payloads.CheckoutSession;
 import com.panda.salon_mgt_backend.payloads.PaymentIntent;
 import com.panda.salon_mgt_backend.repositories.BillingTransactionRepository;
 import com.panda.salon_mgt_backend.repositories.PlanRepository;
+import com.panda.salon_mgt_backend.repositories.StripeWebhookEventRepository;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import com.panda.salon_mgt_backend.services.BillingProvider;
 import com.panda.salon_mgt_backend.services.BillingService;
@@ -34,6 +35,7 @@ public class BillingServiceImpl implements BillingService {
     private final BillingProviderFactory providerFactory;
     private final SubscriptionRepository subscriptionRepository;
     private final PlanRepository planRepository;
+    private final StripeWebhookEventRepository webhookRepo;
 
     @Override
     @Transactional
@@ -76,22 +78,22 @@ public class BillingServiceImpl implements BillingService {
     @Override
     @Transactional
     public void handlePaymentResult(BillingResult result) {
-        log.error("Webhook lookup for txId = {}", result.txId());
+
+        String eventId = result.stripeEventId();
+
+        // 🔐 Webhook idempotency
+        if (eventId != null && webhookRepo.existsByStripeEventId(eventId)) {
+            log.warn("billing.webhook.replay eventId={}", eventId);
+            return;
+        }
 
         BillingTransaction tx = billingRepo
                 .findById(Long.parseLong(result.txId()))
                 .orElseThrow(() -> new IllegalStateException("Transaction not found"));
 
-        // Idempotency
+        // Double safety
         if (tx.getStatus() == BillingStatus.PAID) {
-            log.info("Webhook replay ignored txId={}", tx.getId());
-            return;
-        }
-
-        if (tx.getStatus() != BillingStatus.PENDING) {
-            log.warn("Invalid transition txId={} status={}",
-                    tx.getId(),
-                    tx.getStatus());
+            log.info("billing.payment.already_processed txId={}", tx.getId());
             return;
         }
 
@@ -102,19 +104,30 @@ public class BillingServiceImpl implements BillingService {
         }
 
         tx.setStatus(BillingStatus.PAID);
-        tx.setExternalPaymentId(result.externalPaymentId());
+        tx.setInitialPaymentIntentId(result.externalPaymentId());
         tx.setCompletedAt(Instant.now());
         billingRepo.save(tx);
-        log.error("🔥🔥🔥 NEW BILLING CODE EXECUTED 🔥🔥🔥");
-        activateSubscription(tx);
+
+        activateSubscription(tx, result);
+
+        // 🧾 Persist webhook event
+        if (eventId != null) {
+            webhookRepo.save(
+                    StripeWebhookEvent.builder()
+                            .stripeEventId(eventId)
+                            .processedAt(Instant.now())
+                            .build()
+            );
+        }
+
+        log.info("billing.payment.confirmed txId={} eventId={}", tx.getId(), eventId);
     }
 
     @Transactional
-    void activateSubscription(BillingTransaction tx) {
+    void activateSubscription(BillingTransaction tx, BillingResult result) {
 
         Salon salon = tx.getSalon();
 
-        // expire existing sub
         subscriptionRepository
                 .findTopBySalonAndStatusInOrderByStartDateDesc(
                         salon,
@@ -125,8 +138,7 @@ public class BillingServiceImpl implements BillingService {
                     current.setEndDate(Instant.now());
                 });
 
-        Plan plan = planRepository.findByType(tx.getPlan())
-                .orElseThrow();
+        Plan plan = planRepository.findByType(tx.getPlan()).orElseThrow();
 
         Instant now = Instant.now();
         Duration duration = SubscriptionDurations.durationFor(plan.getType());
@@ -137,7 +149,12 @@ public class BillingServiceImpl implements BillingService {
                 .status(SubscriptionStatus.ACTIVE)
                 .startDate(now)
                 .endDate(now.plus(duration))
-                .externalPaymentId(tx.getExternalPaymentId())
+                .externalPaymentId(tx.getInitialPaymentIntentId())
+
+                // 🔥 RECURRING FIELDS
+                .stripeCustomerId(result.stripeCustomerId())
+                .stripeSubscriptionId(result.stripeSubscriptionId())
+
                 .build();
 
         subscriptionRepository.save(newSub);

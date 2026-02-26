@@ -74,7 +74,7 @@ logging:
   level:
     root: INFO
     org.springframework.web: DEBUG
-    org.hibernate: WARN
+#    org.hibernate: WARN
 
 billing:
   provider: STRIPE
@@ -82,7 +82,9 @@ billing:
 stripe:
   secret-key: ${STRIPE_SECRET_KEY}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET_KEY}
-
+  prices:
+    pro: ${STRIPE_PRICE_PRO}
+    premium: ${STRIPE_PRICE_PREMIUM}
 
 #razorpay:
 #  key-id: ${RAZORPAY_KEY_ID}

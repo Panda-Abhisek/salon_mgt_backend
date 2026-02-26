@@ -38,6 +38,9 @@ public class FakeBillingProvider implements BillingProvider {
         return new BillingResult(
                 payload,
                 "fake_payment",
+                "fake_customer_id",
+                "fake_subscription_id",
+                "fake_event",
                 true, false
         );
     }

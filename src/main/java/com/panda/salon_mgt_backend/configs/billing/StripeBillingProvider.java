@@ -13,6 +13,7 @@ import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 import com.stripe.param.checkout.SessionCreateParams;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @Primary
+@RequiredArgsConstructor
 public class StripeBillingProvider implements BillingProvider {
 
     @Value("${stripe.secret-key}")
@@ -28,6 +30,8 @@ public class StripeBillingProvider implements BillingProvider {
 
     @Value("${stripe.webhook-secret}")
     private String webhookSecret;
+
+    private final StripePriceConfig priceConfig;
 
     @PostConstruct
     void init() {
@@ -42,32 +46,24 @@ public class StripeBillingProvider implements BillingProvider {
     @Override
     public CheckoutSession createCheckout(Salon salon, Plan plan, BillingTransaction tx) {
         try {
+            String priceId = priceConfig.getPriceId(plan.getType());
+
             SessionCreateParams params =
                     SessionCreateParams.builder()
-                            .setMode(SessionCreateParams.Mode.PAYMENT)
+                            .setMode(SessionCreateParams.Mode.SUBSCRIPTION) // 🔥 IMPORTANT
                             .setSuccessUrl("http://localhost:5173/billing/success")
                             .setCancelUrl("http://localhost:5173/billing")
-                            .putMetadata("txId", tx.getId().toString())   // MUST be here
+                            .putMetadata("txId", tx.getId().toString())
                             .addLineItem(
                                     SessionCreateParams.LineItem.builder()
+                                            .setPrice(priceId) // 🔥 STRIPE PRICE ID
                                             .setQuantity(1L)
-                                            .setPriceData(
-                                                    SessionCreateParams.LineItem.PriceData.builder()
-                                                            .setCurrency("inr")
-                                                            .setUnitAmount(plan.getPriceMonthly() * 100L)
-                                                            .setProductData(
-                                                                    SessionCreateParams.LineItem.PriceData.ProductData.builder()
-                                                                            .setName(plan.getName())
-                                                                            .build()
-                                                            )
-                                                            .build()
-                                            )
                                             .build()
                             )
                             .build();
 
             Session session = Session.create(params);
-            log.info("Stripe key length: {}", secretKey.length());
+
             return new CheckoutSession(session.getUrl(), session.getId());
 
         } catch (Exception e) {
@@ -80,37 +76,72 @@ public class StripeBillingProvider implements BillingProvider {
     public BillingResult verifyPayment(String payload, String signature) {
         try {
             Event event = Webhook.constructEvent(payload, signature, webhookSecret);
-            log.info("Stripe event received type={} id={}", event.getType(), event.getId());
 
+            // Stripe noise → DEBUG only
+            log.debug("Stripe webhook received type={}", event.getType());
+
+            // Ignore non-checkout events silently
             if (!"checkout.session.completed".equals(event.getType())) {
-                return new BillingResult(null, null, false, true);
+                return new BillingResult(null, null, null, null, null, false, true);
             }
 
             var deserializer = event.getDataObjectDeserializer();
+            Session rawSession = (Session) deserializer.deserializeUnsafe();
 
-            if (deserializer.getObject().isEmpty()) {
-                log.warn("Stripe object not in SDK schema, using unsafe deserialization");
-            }
-
-            Session session = (Session) deserializer.deserializeUnsafe();
-
-            String txId = session.getMetadata().get("txId");
+            String txId = rawSession.getMetadata().get("txId");
 
             if (txId == null) {
-                log.error("🚨 Stripe session missing txId metadata. Session={}", session.getId());
-                return new BillingResult(null, null, false, false);
+                log.warn("Stripe session missing txId metadata sessionId={}", rawSession.getId());
+                return new BillingResult(null, null, null, null, null, false, true);
             }
 
+            // Expand subscription tree (subscription mode)
+            Session session = Session.retrieve(
+                    rawSession.getId(),
+                    com.stripe.param.checkout.SessionRetrieveParams.builder()
+                            .addExpand("subscription")
+                            .addExpand("subscription.latest_invoice")
+                            .addExpand("subscription.latest_invoice.payment_intent")
+                            .build(),
+                    null
+            );
+
+            String customerId = session.getCustomer();
+            String subscriptionId = session.getSubscription();
+
+            String paymentIntentId = null;
+
+            if (session.getSubscriptionObject() != null
+                    && session.getSubscriptionObject().getLatestInvoiceObject() != null
+                    && session.getSubscriptionObject()
+                    .getLatestInvoiceObject()
+                    .getPaymentIntentObject() != null) {
+
+                paymentIntentId =
+                        session.getSubscriptionObject()
+                                .getLatestInvoiceObject()
+                                .getPaymentIntentObject()
+                                .getId();
+            }
+
+            // Only meaningful billing log → INFO
+            log.info("Stripe checkout completed txId={} paymentIntent={} subscriptionId={}",
+                    txId, paymentIntentId, subscriptionId);
+
             return new BillingResult(
-                    txId,                           // 🔥 internal ID
-                    session.getPaymentIntent(),   // Stripe payment id
+                    txId,
+                    paymentIntentId,
+                    customerId,
+                    subscriptionId,
+                    event.getId(),
                     true,
                     false
             );
 
         } catch (Exception e) {
+            // Real failure → ERROR
             log.error("Stripe webhook verification failed", e);
-            return new BillingResult(null, null, false, false);
+            return new BillingResult(null, null, null, null, null, false, true);
         }
     }
 }
