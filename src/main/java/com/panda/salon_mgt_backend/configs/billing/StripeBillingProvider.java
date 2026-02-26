@@ -77,69 +77,91 @@ public class StripeBillingProvider implements BillingProvider {
         try {
             Event event = Webhook.constructEvent(payload, signature, webhookSecret);
 
-            // Stripe noise → DEBUG only
-            log.debug("Stripe webhook received type={}", event.getType());
+            String type = event.getType();
+            log.debug("Stripe webhook received type={}", type);
 
-            // Ignore non-checkout events silently
-            if (!"checkout.session.completed".equals(event.getType())) {
-                return new BillingResult(null, null, null, null, null, false, true);
+            // -----------------------------
+            // CHECKOUT COMPLETED (activation)
+            // -----------------------------
+            if ("checkout.session.completed".equals(type)) {
+
+                var deserializer = event.getDataObjectDeserializer();
+                Session rawSession = (Session) deserializer.deserializeUnsafe();
+
+                String txId = rawSession.getMetadata().get("txId");
+                if (txId == null) {
+                    log.warn("Stripe session missing txId sessionId={}", rawSession.getId());
+                    return new BillingResult(null, null, null, null, null, false, true);
+                }
+
+                Session session = Session.retrieve(
+                        rawSession.getId(),
+                        com.stripe.param.checkout.SessionRetrieveParams.builder()
+                                .addExpand("subscription")
+                                .addExpand("subscription.latest_invoice")
+                                .addExpand("subscription.latest_invoice.payment_intent")
+                                .build(),
+                        null
+                );
+
+                String customerId = session.getCustomer();
+                String subscriptionId = session.getSubscription();
+
+                String paymentIntentId = null;
+                if (session.getSubscriptionObject() != null
+                        && session.getSubscriptionObject().getLatestInvoiceObject() != null
+                        && session.getSubscriptionObject()
+                        .getLatestInvoiceObject()
+                        .getPaymentIntentObject() != null) {
+
+                    paymentIntentId =
+                            session.getSubscriptionObject()
+                                    .getLatestInvoiceObject()
+                                    .getPaymentIntentObject()
+                                    .getId();
+                }
+
+                return new BillingResult(
+                        txId,
+                        paymentIntentId,
+                        customerId,
+                        subscriptionId,
+                        event.getId(),
+                        true,
+                        false
+                );
             }
 
-            var deserializer = event.getDataObjectDeserializer();
-            Session rawSession = (Session) deserializer.deserializeUnsafe();
+            // -----------------------------
+            // 🔁 RENEWALS
+            // -----------------------------
+            if ("invoice.paid".equals(type)) {
 
-            String txId = rawSession.getMetadata().get("txId");
+                var invoice = (com.stripe.model.Invoice)
+                        event.getDataObjectDeserializer().deserializeUnsafe();
 
-            if (txId == null) {
-                log.warn("Stripe session missing txId metadata sessionId={}", rawSession.getId());
-                return new BillingResult(null, null, null, null, null, false, true);
+                String subscriptionId = invoice.getSubscription();
+                String customerId = invoice.getCustomer();
+                String paymentIntent = invoice.getPaymentIntent();
+
+                log.info("Stripe renewal subscriptionId={} invoiceId={}",
+                        subscriptionId, invoice.getId());
+
+                return new BillingResult(
+                        null, // no txId for renewals
+                        paymentIntent,
+                        customerId,
+                        subscriptionId,
+                        event.getId(),
+                        true,
+                        false
+                );
             }
 
-            // Expand subscription tree (subscription mode)
-            Session session = Session.retrieve(
-                    rawSession.getId(),
-                    com.stripe.param.checkout.SessionRetrieveParams.builder()
-                            .addExpand("subscription")
-                            .addExpand("subscription.latest_invoice")
-                            .addExpand("subscription.latest_invoice.payment_intent")
-                            .build(),
-                    null
-            );
-
-            String customerId = session.getCustomer();
-            String subscriptionId = session.getSubscription();
-
-            String paymentIntentId = null;
-
-            if (session.getSubscriptionObject() != null
-                    && session.getSubscriptionObject().getLatestInvoiceObject() != null
-                    && session.getSubscriptionObject()
-                    .getLatestInvoiceObject()
-                    .getPaymentIntentObject() != null) {
-
-                paymentIntentId =
-                        session.getSubscriptionObject()
-                                .getLatestInvoiceObject()
-                                .getPaymentIntentObject()
-                                .getId();
-            }
-
-            // Only meaningful billing log → INFO
-            log.info("Stripe checkout completed txId={} paymentIntent={} subscriptionId={}",
-                    txId, paymentIntentId, subscriptionId);
-
-            return new BillingResult(
-                    txId,
-                    paymentIntentId,
-                    customerId,
-                    subscriptionId,
-                    event.getId(),
-                    true,
-                    false
-            );
+            // Ignore everything else silently
+            return new BillingResult(null, null, null, null, null, false, true);
 
         } catch (Exception e) {
-            // Real failure → ERROR
             log.error("Stripe webhook verification failed", e);
             return new BillingResult(null, null, null, null, null, false, true);
         }

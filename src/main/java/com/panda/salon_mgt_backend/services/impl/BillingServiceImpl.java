@@ -81,25 +81,30 @@ public class BillingServiceImpl implements BillingService {
 
         String eventId = result.stripeEventId();
 
-        // 🔐 Webhook idempotency
+        // Webhook idempotency
         if (eventId != null && webhookRepo.existsByStripeEventId(eventId)) {
             log.warn("billing.webhook.replay eventId={}", eventId);
             return;
         }
 
+        // ----------------------------------
+        // 🔁 RENEWAL FLOW
+        // ----------------------------------
+        if (result.txId() == null && result.stripeSubscriptionId() != null) {
+            handleRenewal(result);
+            persistWebhook(eventId);
+            return;
+        }
+
+        // ----------------------------------
+        // 🆕 ACTIVATION FLOW (existing)
+        // ----------------------------------
         BillingTransaction tx = billingRepo
                 .findById(Long.parseLong(result.txId()))
                 .orElseThrow(() -> new IllegalStateException("Transaction not found"));
 
-        // Double safety
         if (tx.getStatus() == BillingStatus.PAID) {
             log.info("billing.payment.already_processed txId={}", tx.getId());
-            return;
-        }
-
-        if (!result.success()) {
-            tx.setStatus(BillingStatus.FAILED);
-            billingRepo.save(tx);
             return;
         }
 
@@ -109,18 +114,9 @@ public class BillingServiceImpl implements BillingService {
         billingRepo.save(tx);
 
         activateSubscription(tx, result);
+        persistWebhook(eventId);
 
-        // 🧾 Persist webhook event
-        if (eventId != null) {
-            webhookRepo.save(
-                    StripeWebhookEvent.builder()
-                            .stripeEventId(eventId)
-                            .processedAt(Instant.now())
-                            .build()
-            );
-        }
-
-        log.info("billing.payment.confirmed txId={} eventId={}", tx.getId(), eventId);
+        log.info("billing.activation.confirmed txId={}", tx.getId());
     }
 
     @Transactional
@@ -158,5 +154,40 @@ public class BillingServiceImpl implements BillingService {
                 .build();
 
         subscriptionRepository.save(newSub);
+    }
+
+    @Transactional
+    void handleRenewal(BillingResult result) {
+
+        String stripeSubId = result.stripeSubscriptionId();
+
+        Subscription sub = subscriptionRepository
+                .findAll()
+                .stream()
+                .filter(s -> stripeSubId.equals(s.getStripeSubscriptionId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Subscription not found for Stripe sub=" + stripeSubId));
+
+        // Extend duration
+        Duration duration = SubscriptionDurations.durationFor(sub.getPlan().getType());
+
+        Instant newEnd = sub.getEndDate().plus(duration);
+        sub.setEndDate(newEnd);
+
+        log.info("billing.renewal.applied salonId={} newEnd={}",
+                sub.getSalon().getSalonId(),
+                newEnd);
+    }
+
+    private void persistWebhook(String eventId) {
+        if (eventId == null) return;
+
+        webhookRepo.save(
+                StripeWebhookEvent.builder()
+                        .stripeEventId(eventId)
+                        .processedAt(Instant.now())
+                        .build()
+        );
     }
 }
