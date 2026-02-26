@@ -75,35 +75,94 @@ public class BillingServiceImpl implements BillingService {
         return new PaymentIntent(tx, session.checkoutUrl());
     }
 
-    @Override
     @Transactional
-    public void handlePaymentResult(BillingResult result) {
-        // Lifecycle event (no txId)
-        if (result.txId() == null && result.stripeSubscriptionId() != null) {
-            handleStripeSubscriptionDeleted(result);
+    void handleRenewalSuccess(BillingResult result) {
+
+        Subscription sub = subscriptionRepository
+                .findByStripeSubscriptionId(result.stripeSubscriptionId())
+                .orElse(null);
+
+        if (sub == null) {
+            log.warn("renewal.success.unknown stripeSub={}", result.stripeSubscriptionId());
             return;
         }
 
+        // Extend subscription window
+        Instant now = Instant.now();
+        Duration duration = SubscriptionDurations.durationFor(sub.getPlan().getType());
+
+        sub.setStartDate(now);
+        sub.setEndDate(now.plus(duration));
+        sub.setStatus(SubscriptionStatus.ACTIVE);
+        sub.setExternalPaymentId(result.externalPaymentId());
+
+        subscriptionRepository.save(sub);
+
+        log.info("billing.renewal.success salonId={} stripeSub={}",
+                sub.getSalon().getSalonId(),
+                sub.getStripeSubscriptionId());
+    }
+
+    @Transactional
+    void handleRenewalFailure(BillingResult result) {
+
+        Subscription sub = subscriptionRepository
+                .findByStripeSubscriptionId(result.stripeSubscriptionId())
+                .orElse(null);
+
+        if (sub == null) {
+            log.warn("renewal.failed.unknown stripeSub={}", result.stripeSubscriptionId());
+            return;
+        }
+
+        // Move to GRACE instead of instant downgrade
+        if (sub.getStatus() == SubscriptionStatus.ACTIVE) {
+            sub.setStatus(SubscriptionStatus.GRACE);
+            subscriptionRepository.save(sub);
+
+            log.warn("billing.renewal.grace_entered salonId={} stripeSub={}",
+                    sub.getSalon().getSalonId(),
+                    sub.getStripeSubscriptionId());
+        }
+    }
+
+    @Override
+    @Transactional
+    public void handlePaymentResult(BillingResult result) {
+
         String eventId = result.stripeEventId();
 
-        // Webhook idempotency
+        // 🔐 Idempotency FIRST
         if (eventId != null && webhookRepo.existsByStripeEventId(eventId)) {
             log.warn("billing.webhook.replay eventId={}", eventId);
             return;
         }
 
-        // ----------------------------------
-        // 🔁 RENEWAL FLOW
-        // ----------------------------------
+        // ===============================
+        // 🔁 STRIPE LIFECYCLE EVENTS
+        // ===============================
         if (result.txId() == null && result.stripeSubscriptionId() != null) {
-            handleRenewal(result);
+
+            // Cancellation from Stripe dashboard
+            if (result.success() && result.externalPaymentId() == null) {
+                handleStripeSubscriptionDeleted(result);
+            }
+            // Renewal success
+            else if (result.success()) {
+                handleRenewalSuccess(result);
+            }
+            // Renewal failure
+            else {
+                handleRenewalFailure(result);
+            }
+
             persistWebhook(eventId);
             return;
         }
 
-        // ----------------------------------
-        // 🆕 ACTIVATION FLOW (existing)
-        // ----------------------------------
+        // ===============================
+        // 🆕 FIRST ACTIVATION
+        // ===============================
         BillingTransaction tx = billingRepo
                 .findById(Long.parseLong(result.txId()))
                 .orElseThrow(() -> new IllegalStateException("Transaction not found"));
@@ -159,30 +218,6 @@ public class BillingServiceImpl implements BillingService {
                 .build();
 
         subscriptionRepository.save(newSub);
-    }
-
-    @Transactional
-    void handleRenewal(BillingResult result) {
-
-        String stripeSubId = result.stripeSubscriptionId();
-
-        Subscription sub = subscriptionRepository
-                .findAll()
-                .stream()
-                .filter(s -> stripeSubId.equals(s.getStripeSubscriptionId()))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "Subscription not found for Stripe sub=" + stripeSubId));
-
-        // Extend duration
-        Duration duration = SubscriptionDurations.durationFor(sub.getPlan().getType());
-
-        Instant newEnd = sub.getEndDate().plus(duration);
-        sub.setEndDate(newEnd);
-
-        log.info("billing.renewal.applied salonId={} newEnd={}",
-                sub.getSalon().getSalonId(),
-                newEnd);
     }
 
     private void persistWebhook(String eventId) {

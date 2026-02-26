@@ -80,7 +80,7 @@ public class StripeBillingProvider implements BillingProvider {
             String type = event.getType();
             log.debug("Stripe webhook received type={}", type);
 
-            if ("customer.subscription.deleted".equals(event.getType())) {
+            if ("customer.subscription.deleted".equals(type)) {
 
                 var obj = event.getDataObjectDeserializer().deserializeUnsafe();
                 com.stripe.model.Subscription stripeSub =
@@ -97,6 +97,48 @@ public class StripeBillingProvider implements BillingProvider {
                         subId,
                         event.getId(),
                         true,
+                        false
+                );
+            }
+
+            if ("invoice.payment_succeeded".equals(event.getType())) {
+
+                var obj = event.getDataObjectDeserializer().deserializeUnsafe();
+                com.stripe.model.Invoice invoice = (com.stripe.model.Invoice) obj;
+
+                String subId = invoice.getSubscription();
+                String paymentIntentId = invoice.getPaymentIntent();
+
+                log.info("Stripe renewal success subscriptionId={} paymentIntent={}",
+                        subId, paymentIntentId);
+
+                return new BillingResult(
+                        null,
+                        paymentIntentId,
+                        invoice.getCustomer(),
+                        subId,
+                        event.getId(),
+                        true,
+                        false
+                );
+            }
+
+            if ("invoice.payment_failed".equals(event.getType())) {
+
+                var obj = event.getDataObjectDeserializer().deserializeUnsafe();
+                com.stripe.model.Invoice invoice = (com.stripe.model.Invoice) obj;
+
+                String subId = invoice.getSubscription();
+
+                log.warn("Stripe renewal FAILED subscriptionId={}", subId);
+
+                return new BillingResult(
+                        null,
+                        null,
+                        invoice.getCustomer(),
+                        subId,
+                        event.getId(),
+                        false, // important
                         false
                 );
             }
@@ -145,32 +187,6 @@ public class StripeBillingProvider implements BillingProvider {
                 return new BillingResult(
                         txId,
                         paymentIntentId,
-                        customerId,
-                        subscriptionId,
-                        event.getId(),
-                        true,
-                        false
-                );
-            }
-
-            // -----------------------------
-            // 🔁 RENEWALS
-            // -----------------------------
-            if ("invoice.paid".equals(type)) {
-
-                var invoice = (com.stripe.model.Invoice)
-                        event.getDataObjectDeserializer().deserializeUnsafe();
-
-                String subscriptionId = invoice.getSubscription();
-                String customerId = invoice.getCustomer();
-                String paymentIntent = invoice.getPaymentIntent();
-
-                log.info("Stripe renewal subscriptionId={} invoiceId={}",
-                        subscriptionId, invoice.getId());
-
-                return new BillingResult(
-                        null, // no txId for renewals
-                        paymentIntent,
                         customerId,
                         subscriptionId,
                         event.getId(),
