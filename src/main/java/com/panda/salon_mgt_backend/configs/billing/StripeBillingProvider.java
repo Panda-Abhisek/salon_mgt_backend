@@ -80,6 +80,27 @@ public class StripeBillingProvider implements BillingProvider {
             String type = event.getType();
             log.debug("Stripe webhook received type={}", type);
 
+            if ("customer.subscription.deleted".equals(event.getType())) {
+
+                var obj = event.getDataObjectDeserializer().deserializeUnsafe();
+                com.stripe.model.Subscription stripeSub =
+                        (com.stripe.model.Subscription) obj;
+
+                String subId = stripeSub.getId();
+
+                log.warn("Stripe subscription deleted subscriptionId={}", subId);
+
+                return new BillingResult(
+                        null,               // txId not needed
+                        null,
+                        stripeSub.getCustomer(),
+                        subId,
+                        event.getId(),
+                        true,
+                        false
+                );
+            }
+
             // -----------------------------
             // CHECKOUT COMPLETED (activation)
             // -----------------------------

@@ -78,6 +78,11 @@ public class BillingServiceImpl implements BillingService {
     @Override
     @Transactional
     public void handlePaymentResult(BillingResult result) {
+        // Lifecycle event (no txId)
+        if (result.txId() == null && result.stripeSubscriptionId() != null) {
+            handleStripeSubscriptionDeleted(result);
+            return;
+        }
 
         String eventId = result.stripeEventId();
 
@@ -229,5 +234,44 @@ public class BillingServiceImpl implements BillingService {
         } catch (Exception e) {
             throw new RuntimeException("Stripe cancellation failed", e);
         }
+    }
+
+    @Transactional
+    void handleStripeSubscriptionDeleted(BillingResult result) {
+
+        Subscription sub = subscriptionRepository
+                .findByStripeSubscriptionId(result.stripeSubscriptionId())
+                .orElse(null);
+
+        if (sub == null) {
+            log.warn("subscription.delete.webhook_unknown stripeSub={}",
+                    result.stripeSubscriptionId());
+            return;
+        }
+
+        if (sub.getStatus() == SubscriptionStatus.EXPIRED) {
+            return; // idempotent
+        }
+
+        sub.setStatus(SubscriptionStatus.EXPIRED);
+        sub.setEndDate(Instant.now());
+        subscriptionRepository.save(sub);
+
+        // FREE fallback
+        Plan freePlan = planRepository.findByType(PlanType.FREE).orElseThrow();
+
+        Subscription fallback = Subscription.builder()
+                .salon(sub.getSalon())
+                .plan(freePlan)
+                .status(SubscriptionStatus.ACTIVE)
+                .startDate(Instant.now())
+                .endDate(Instant.now().plus(Duration.ofDays(3650)))
+                .build();
+
+        subscriptionRepository.save(fallback);
+
+        log.warn("billing.subscription.force_expired salonId={} stripeSub={}",
+                sub.getSalon().getSalonId(),
+                sub.getStripeSubscriptionId());
     }
 }
