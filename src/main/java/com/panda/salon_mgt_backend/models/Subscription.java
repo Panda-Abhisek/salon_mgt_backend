@@ -44,4 +44,7 @@ public class Subscription {
 
     @Column(name = "stripe_subscription_id")
     private String stripeSubscriptionId;
+
+    @Column(name = "cancel_at_period_end")
+    private Boolean cancelAtPeriodEnd = false;
 }

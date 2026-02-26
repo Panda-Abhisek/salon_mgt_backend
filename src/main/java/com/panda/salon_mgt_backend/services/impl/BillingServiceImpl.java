@@ -190,4 +190,44 @@ public class BillingServiceImpl implements BillingService {
                         .build()
         );
     }
+
+    @Transactional
+    @Override
+    public void cancelSubscription(Authentication auth) {
+
+        Salon salon = tenantContext.getSalon(auth);
+
+        Subscription sub = subscriptionRepository
+                .findTopBySalonAndStatusInOrderByStartDateDesc(
+                        salon,
+                        List.of(ACTIVE, GRACE)
+                )
+                .orElseThrow(() -> new IllegalStateException("No active subscription"));
+
+        if (sub.getStripeSubscriptionId() == null) {
+            throw new IllegalStateException("Not a Stripe subscription");
+        }
+
+        try {
+            com.stripe.model.Subscription stripeSub =
+                    com.stripe.model.Subscription.retrieve(sub.getStripeSubscriptionId());
+
+            com.stripe.param.SubscriptionUpdateParams params =
+                    com.stripe.param.SubscriptionUpdateParams.builder()
+                            .setCancelAtPeriodEnd(true)
+                            .build();
+
+            stripeSub.update(params);
+
+            sub.setCancelAtPeriodEnd(true);
+            subscriptionRepository.save(sub);
+
+            log.info("billing.cancel_requested salonId={} stripeSub={}",
+                    salon.getSalonId(),
+                    sub.getStripeSubscriptionId());
+
+        } catch (Exception e) {
+            throw new RuntimeException("Stripe cancellation failed", e);
+        }
+    }
 }

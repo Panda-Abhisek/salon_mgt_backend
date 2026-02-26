@@ -11,4 +11,7 @@ public interface BillingService {
     void handlePaymentResult(BillingResult result);
 
     PaymentIntent createPayment(Authentication auth, Plan newPlan);
+
+    @Transactional
+    void cancelSubscription(Authentication auth);
 }

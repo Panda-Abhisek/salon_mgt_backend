@@ -98,4 +98,6 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
                 AND s.status = 'TRIAL'
             """)
     boolean hasUsedTrial(@Param("salon") Salon salon);
+
+    Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId);
 }

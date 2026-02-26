@@ -3,6 +3,7 @@ package com.panda.salon_mgt_backend.controllers;
 import com.panda.salon_mgt_backend.models.Plan;
 import com.panda.salon_mgt_backend.models.Subscription;
 import com.panda.salon_mgt_backend.payloads.*;
+import com.panda.salon_mgt_backend.services.BillingService;
 import com.panda.salon_mgt_backend.services.SubscriptionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
+    private final BillingService billingService;
 
     // 🟢 Get current plan
     @GetMapping
@@ -67,5 +69,11 @@ public class SubscriptionController {
                 limits,
                 features
         );
+    }
+
+    @PostMapping("/cancel")
+    public ResponseEntity<Void> cancel(Authentication auth) {
+        billingService.cancelSubscription(auth);
+        return ResponseEntity.ok().build();
     }
 }
