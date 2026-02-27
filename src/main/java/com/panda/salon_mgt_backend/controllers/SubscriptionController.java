@@ -1,7 +1,9 @@
 package com.panda.salon_mgt_backend.controllers;
 
 import com.panda.salon_mgt_backend.models.Plan;
+import com.panda.salon_mgt_backend.models.RecoverySeverity;
 import com.panda.salon_mgt_backend.models.Subscription;
+import com.panda.salon_mgt_backend.models.SubscriptionStatus;
 import com.panda.salon_mgt_backend.payloads.*;
 import com.panda.salon_mgt_backend.services.BillingService;
 import com.panda.salon_mgt_backend.services.SubscriptionService;
@@ -61,13 +63,34 @@ public class SubscriptionController {
                 plan.getSmartAlertsEnabled()
         );
 
+        int retries = sub.getRetryCount() == null ? 0 : sub.getRetryCount();
+        boolean delinquent = Boolean.TRUE.equals(sub.getDelinquent());
+
+        RecoverySeverity severity;
+
+        if (delinquent || retries >= 3) {
+            severity = RecoverySeverity.CRITICAL;
+        } else if (sub.getStatus() == SubscriptionStatus.GRACE || retries >= 1) {
+            severity = RecoverySeverity.WARNING;
+        } else {
+            severity = RecoverySeverity.NONE;
+        }
+
+        boolean atRisk =
+                delinquent ||
+                        sub.getStatus() == SubscriptionStatus.GRACE;
+
         return new SubscriptionResponse(
                 sub.getPlan().getType(),
                 sub.getStatus(),
                 sub.getStartDate(),
                 sub.getEndDate(),
                 limits,
-                features
+                features,
+                delinquent,
+                retries,
+                atRisk,
+                severity
         );
     }
 

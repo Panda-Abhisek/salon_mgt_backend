@@ -1,6 +1,7 @@
 package com.panda.salon_mgt_backend.payloads;
 
 import com.panda.salon_mgt_backend.models.PlanType;
+import com.panda.salon_mgt_backend.models.RecoverySeverity;
 import com.panda.salon_mgt_backend.models.SubscriptionStatus;
 
 import java.time.Instant;
@@ -11,5 +12,9 @@ public record SubscriptionResponse(
         Instant startDate,
         Instant endDate,
         PlanLimitsDto limits,
-        PlanFeaturesDto features
+        PlanFeaturesDto features,
+        Boolean delinquent,
+        Integer retryCount,
+        Boolean paymentAtRisk,
+        RecoverySeverity recoverySeverity
 ) {}
