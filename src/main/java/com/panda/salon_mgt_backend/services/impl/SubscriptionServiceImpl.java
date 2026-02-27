@@ -4,6 +4,7 @@ import com.panda.salon_mgt_backend.exceptions.CanNotException;
 import com.panda.salon_mgt_backend.models.*;
 import com.panda.salon_mgt_backend.payloads.BillingIntentResponse;
 import com.panda.salon_mgt_backend.payloads.PaymentIntent;
+import com.panda.salon_mgt_backend.repositories.BillingTransactionRepository;
 import com.panda.salon_mgt_backend.repositories.PlanRepository;
 import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import com.panda.salon_mgt_backend.services.BillingProvider;
@@ -35,6 +36,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final SubscriptionPolicy subscriptionPolicy;
     private final BillingService billingService;
     private final BillingProvider billingProvider;
+    private final BillingTransactionRepository billingRepo;
 
     @Override
     public Subscription getCurrentSubscription(Authentication auth) {
@@ -64,13 +66,23 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 )
                 .orElseThrow(() -> new IllegalStateException("No active subscription found"));
 
+        // 🛑 HARD BLOCK — already on paid plan
+        if (current.getStatus() == ACTIVE && current.getPlan().getType() != PlanType.FREE) {
+            throw new CanNotException("You already have an active paid subscription");
+        }
+
+        // 🛑 BLOCK pending payments
+        boolean hasPending = billingRepo.existsBySalonAndStatus(salon, BillingStatus.PENDING);
+        if (hasPending) {
+            throw new CanNotException("Payment already in progress. Please complete checkout.");
+        }
+
         subscriptionPolicy.validateUpgrade(current, targetPlan);
 
         Plan newPlan = planRepository.findByType(targetPlan)
                 .orElseThrow(() -> new IllegalStateException("Target plan not found"));
 
         PaymentIntent intent = billingService.createPayment(auth, newPlan);
-
         return new BillingIntentResponse(intent.checkoutUrl());
     }
 

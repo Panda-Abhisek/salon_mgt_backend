@@ -76,6 +76,26 @@ public class BillingServiceImpl implements BillingService {
     }
 
     @Transactional
+    @Override
+    public void handleRecoveredPayment(BillingTransaction tx) {
+
+        // Prevent double recovery
+        if (tx.getStatus() == BillingStatus.PAID) {
+            log.warn("billing.recovery.already_paid txId={}", tx.getId());
+            return;
+        }
+
+        tx.setStatus(BillingStatus.PAID);
+        tx.setCompletedAt(Instant.now());
+        billingRepo.save(tx);
+
+        // Activate subscription WITHOUT Stripe metadata
+        activateRecoveredSubscription(tx);
+
+        log.error("🔥 billing.recovery.activated txId={}", tx.getId());
+    }
+
+    @Transactional
     void handleRenewalSuccess(BillingResult result) {
 
         Subscription sub = subscriptionRepository
@@ -234,6 +254,38 @@ public class BillingServiceImpl implements BillingService {
                 .stripeCustomerId(result.stripeCustomerId())
                 .stripeSubscriptionId(result.stripeSubscriptionId())
 
+                .build();
+
+        subscriptionRepository.save(newSub);
+    }
+
+    @Transactional
+    void activateRecoveredSubscription(BillingTransaction tx) {
+
+        Salon salon = tx.getSalon();
+
+        subscriptionRepository
+                .findTopBySalonAndStatusInOrderByStartDateDesc(
+                        salon,
+                        List.of(TRIAL, ACTIVE, GRACE)
+                )
+                .ifPresent(current -> {
+                    current.setStatus(SubscriptionStatus.EXPIRED);
+                    current.setEndDate(Instant.now());
+                });
+
+        Plan plan = planRepository.findByType(tx.getPlan()).orElseThrow();
+
+        Instant now = Instant.now();
+        Duration duration = SubscriptionDurations.durationFor(plan.getType());
+
+        Subscription newSub = Subscription.builder()
+                .salon(salon)
+                .plan(plan)
+                .status(SubscriptionStatus.ACTIVE)
+                .startDate(now)
+                .endDate(now.plus(duration))
+                .externalPaymentId(tx.getInitialPaymentIntentId())
                 .build();
 
         subscriptionRepository.save(newSub);
