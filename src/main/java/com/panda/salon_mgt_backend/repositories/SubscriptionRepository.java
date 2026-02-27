@@ -100,4 +100,25 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
     boolean hasUsedTrial(@Param("salon") Salon salon);
 
     Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId);
+
+    @Query("""
+                SELECT COUNT(s)
+                FROM Subscription s
+                WHERE s.status = 'GRACE'
+            """)
+    long countInGrace();
+
+    @Query("""
+                SELECT COUNT(s)
+                FROM Subscription s
+                WHERE s.delinquent = true
+            """)
+    long countDelinquent();
+
+    @Query("""
+                SELECT COUNT(s)
+                FROM Subscription s
+                WHERE s.retryCount > 0
+            """)
+    long countAtRisk();
 }
