@@ -87,7 +87,6 @@ public class BillingServiceImpl implements BillingService {
             return;
         }
 
-        // Extend subscription window
         Instant now = Instant.now();
         Duration duration = SubscriptionDurations.durationFor(sub.getPlan().getType());
 
@@ -96,9 +95,14 @@ public class BillingServiceImpl implements BillingService {
         sub.setStatus(SubscriptionStatus.ACTIVE);
         sub.setExternalPaymentId(result.externalPaymentId());
 
+        // 🔥 RESET DUNNING STATE
+        sub.setRetryCount(0);
+        sub.setLastPaymentFailureAt(null);
+        sub.setDelinquent(false);
+
         subscriptionRepository.save(sub);
 
-        log.info("billing.renewal.success salonId={} stripeSub={}",
+        log.info("billing.renewal.recovered salonId={} stripeSub={}",
                 sub.getSalon().getSalonId(),
                 sub.getStripeSubscriptionId());
     }
@@ -115,15 +119,30 @@ public class BillingServiceImpl implements BillingService {
             return;
         }
 
-        // Move to GRACE instead of instant downgrade
+        Instant now = Instant.now();
+
+        // Increment retry intelligence
+        sub.setRetryCount((sub.getRetryCount() == null ? 0 : sub.getRetryCount()) + 1);
+        sub.setLastPaymentFailureAt(now);
+
+        // Enter GRACE on first failure
         if (sub.getStatus() == SubscriptionStatus.ACTIVE) {
             sub.setStatus(SubscriptionStatus.GRACE);
-            subscriptionRepository.save(sub);
-
-            log.warn("billing.renewal.grace_entered salonId={} stripeSub={}",
-                    sub.getSalon().getSalonId(),
-                    sub.getStripeSubscriptionId());
         }
+
+        // Mark delinquent after repeated failures
+        if (sub.getRetryCount() >= 3) {
+            sub.setDelinquent(true);
+            log.error("billing.delinquent salonId={} retries={}",
+                    sub.getSalon().getSalonId(),
+                    sub.getRetryCount());
+        }
+
+        subscriptionRepository.save(sub);
+
+        log.warn("billing.renewal.failed salonId={} retryCount={}",
+                sub.getSalon().getSalonId(),
+                sub.getRetryCount());
     }
 
     @Override

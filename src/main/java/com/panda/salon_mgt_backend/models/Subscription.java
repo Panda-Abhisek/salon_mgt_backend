@@ -47,4 +47,14 @@ public class Subscription {
 
     @Column(name = "cancel_at_period_end")
     private Boolean cancelAtPeriodEnd = false;
+
+    // Dunning intelligence
+    @Column(name = "retry_count")
+    private Integer retryCount = 0;
+
+    @Column(name = "last_payment_failure_at")
+    private Instant lastPaymentFailureAt;
+
+    @Column(name = "delinquent")
+    private Boolean delinquent = false;
 }
