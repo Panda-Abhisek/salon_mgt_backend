@@ -1,5 +1,6 @@
 package com.panda.salon_mgt_backend.services.impl;
 
+import com.panda.salon_mgt_backend.models.PlanType;
 import com.panda.salon_mgt_backend.models.Subscription;
 import com.panda.salon_mgt_backend.models.SubscriptionStatus;
 import com.panda.salon_mgt_backend.payloads.RevenueMetrics;
@@ -19,34 +20,46 @@ public class RevenueMetricsService {
 
     public RevenueMetrics calculate() {
 
-        List<Subscription> activeSubs = subscriptionRepository.findAll()
-                .stream()
+        List<Subscription> all = subscriptionRepository.findAll();
+
+        List<Subscription> active = all.stream()
                 .filter(s -> s.getStatus() == SubscriptionStatus.ACTIVE)
                 .toList();
 
-        long total = activeSubs.size();
+        long total = active.size();
 
-        long paid = activeSubs.stream()
-                .filter(s -> s.getPlan().getType() != com.panda.salon_mgt_backend.models.PlanType.FREE)
+        long paid = active.stream()
+                .filter(s -> s.getPlan().getType() != PlanType.FREE)
                 .count();
 
         long free = total - paid;
 
-        long mrr = activeSubs.stream()
-                .filter(s -> s.getPlan().getType() != com.panda.salon_mgt_backend.models.PlanType.FREE)
+        long mrr = active.stream()
+                .filter(s -> s.getPlan().getType() != PlanType.FREE)
                 .mapToLong(s -> s.getPlan().getPriceMonthly())
                 .sum();
 
-        Instant cutoff = Instant.now().minus(30, ChronoUnit.DAYS);
+        Instant now = Instant.now();
+        Instant lastMonth = now.minus(30, ChronoUnit.DAYS);
 
-        long newPaid = activeSubs.stream()
-                .filter(s -> s.getPlan().getType() != com.panda.salon_mgt_backend.models.PlanType.FREE)
-                .filter(s -> s.getStartDate().isAfter(cutoff))
+        long prevMRR = calculateMRRAt(lastMonth, all);
+
+        long netChange = mrr - prevMRR;
+
+        double growth = prevMRR == 0 ? 0 : (double) netChange / prevMRR;
+
+        double conversion = total == 0 ? 0 : (double) paid / total;
+
+        double arpu = paid == 0 ? 0 : (double) mrr / paid;
+
+        long newPaid = active.stream()
+                .filter(s -> s.getPlan().getType() != PlanType.FREE)
+                .filter(s -> s.getStartDate().isAfter(lastMonth))
                 .count();
 
-        long churn = subscriptionRepository.findAll().stream()
+        long churn = all.stream()
                 .filter(s -> s.getStatus() == SubscriptionStatus.EXPIRED)
-                .filter(s -> s.getEndDate() != null && s.getEndDate().isAfter(cutoff))
+                .filter(s -> s.getEndDate() != null && s.getEndDate().isAfter(lastMonth))
                 .count();
 
         return RevenueMetrics.builder()
@@ -54,8 +67,22 @@ public class RevenueMetricsService {
                 .activePaidSubscriptions(paid)
                 .activeFreeSubscriptions(free)
                 .monthlyRecurringRevenue(mrr)
+                .previousMonthMRR(prevMRR)
+                .netRevenueChange(netChange)
+                .mrrGrowthRate(growth)
+                .paidConversionRate(conversion)
+                .arpu(arpu)
                 .newPaidActivationsLast30Days(newPaid)
                 .churnedLast30Days(churn)
                 .build();
+    }
+
+    private long calculateMRRAt(Instant cutoff, List<Subscription> subs) {
+        return subs.stream()
+                .filter(s -> s.getStatus() == SubscriptionStatus.ACTIVE)
+                .filter(s -> s.getPlan().getType() != PlanType.FREE)
+                .filter(s -> s.getStartDate().isBefore(cutoff))
+                .mapToLong(s -> s.getPlan().getPriceMonthly())
+                .sum();
     }
 }
