@@ -92,7 +92,7 @@ public class BillingServiceImpl implements BillingService {
         // Activate subscription WITHOUT Stripe metadata
         activateRecoveredSubscription(tx);
 
-        log.error("🔥 billing.recovery.activated txId={}", tx.getId());
+        log.warn("billing.recovery.activation txId={}", tx.getId());
     }
 
     @Transactional

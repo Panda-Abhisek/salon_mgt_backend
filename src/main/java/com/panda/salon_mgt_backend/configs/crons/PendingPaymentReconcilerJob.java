@@ -58,7 +58,7 @@ public class PendingPaymentReconcilerJob {
 
                 if ("complete".equals(session.getStatus())) {
                     billingService.handleRecoveredPayment(tx);
-                    log.error("🔥 billing.recovered_and_activated txId={}", tx.getId());
+                    log.warn("billing.recovered txId={}", tx.getId());
                 } else {
                     log.warn("billing.reconcile.still_pending txId={}", tx.getId());
                 }
