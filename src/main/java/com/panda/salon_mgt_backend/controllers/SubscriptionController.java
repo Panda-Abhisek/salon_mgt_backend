@@ -76,9 +76,10 @@ public class SubscriptionController {
             severity = RecoverySeverity.NONE;
         }
 
-        boolean atRisk =
-                delinquent ||
-                        sub.getStatus() == SubscriptionStatus.GRACE;
+        boolean banner = sub.getStatus() == SubscriptionStatus.GRACE || retries >= 1;
+        boolean forceModal = retries >= 2 || delinquent;
+        boolean block = delinquent && retries >= 4;
+        boolean atRisk = delinquent || sub.getStatus() == SubscriptionStatus.GRACE;
 
         return new SubscriptionResponse(
                 sub.getPlan().getType(),
@@ -90,7 +91,10 @@ public class SubscriptionController {
                 delinquent,
                 retries,
                 atRisk,
-                severity
+                severity,
+                banner,
+                forceModal,
+                block
         );
     }
 

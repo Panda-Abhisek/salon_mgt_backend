@@ -16,5 +16,8 @@ public record SubscriptionResponse(
         Boolean delinquent,
         Integer retryCount,
         Boolean paymentAtRisk,
-        RecoverySeverity recoverySeverity
+        RecoverySeverity recoverySeverity,
+        Boolean showRecoveryBanner,
+        Boolean forceBillingModal,
+        Boolean blockFeatures
 ) {}
