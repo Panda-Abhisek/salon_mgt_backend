@@ -76,6 +76,9 @@ public class PendingPaymentReconcilerJob {
             }
         }
 
-        log.error("billing.reconcile.permanent_failure txId={}", tx.getId());
+        tx.setStatus(BillingStatus.FAILED_PERMANENT);
+        billingRepo.save(tx);
+
+        log.error("billing.dead_lettered txId={}", tx.getId());
     }
 }

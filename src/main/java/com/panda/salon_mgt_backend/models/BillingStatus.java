@@ -5,5 +5,6 @@ public enum BillingStatus {
     PENDING,
     PAID,
     FAILED,
-    CANCELLED
+    CANCELLED,
+    FAILED_PERMANENT
 }
