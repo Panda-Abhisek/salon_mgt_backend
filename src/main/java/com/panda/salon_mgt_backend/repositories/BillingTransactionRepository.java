@@ -4,6 +4,8 @@ import com.panda.salon_mgt_backend.models.BillingStatus;
 import com.panda.salon_mgt_backend.models.BillingTransaction;
 import com.panda.salon_mgt_backend.models.Salon;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
@@ -24,4 +26,21 @@ public interface BillingTransactionRepository extends JpaRepository<BillingTrans
     );
 
     List<BillingTransaction> findTop50ByStatusOrderByCreatedAtDesc(BillingStatus status);
+
+    long countByStatus(BillingStatus status);
+
+    @Query("""
+                SELECT COUNT(b)
+                FROM BillingTransaction b
+                WHERE b.status = 'PAID'
+                AND b.completedAt >= :since
+            """)
+    long countRecoveredSince(@Param("since") Instant since);
+
+    @Query("""
+                SELECT COUNT(b)
+                FROM BillingTransaction b
+                WHERE b.status = 'FAILED_PERMANENT'
+            """)
+    long countDeadLetters();
 }
