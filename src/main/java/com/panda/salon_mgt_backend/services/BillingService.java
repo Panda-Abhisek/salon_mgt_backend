@@ -18,4 +18,7 @@ public interface BillingService {
 
     @Transactional
     void cancelSubscription(Authentication auth);
+
+    @Transactional
+    void forceRecoverTransaction(BillingTransaction tx);
 }

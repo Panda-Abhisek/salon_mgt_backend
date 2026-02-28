@@ -22,4 +22,6 @@ public interface BillingTransactionRepository extends JpaRepository<BillingTrans
             BillingStatus status,
             Instant cutoff
     );
+
+    List<BillingTransaction> findTop50ByStatusOrderByCreatedAtDesc(BillingStatus status);
 }

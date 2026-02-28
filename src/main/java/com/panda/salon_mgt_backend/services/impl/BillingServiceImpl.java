@@ -380,4 +380,35 @@ public class BillingServiceImpl implements BillingService {
                 sub.getSalon().getSalonId(),
                 sub.getStripeSubscriptionId());
     }
+
+    @Transactional
+    @Override
+    public void forceRecoverTransaction(BillingTransaction tx) {
+
+        if (tx.getStatus() == BillingStatus.PAID) {
+            log.warn("billing.manual.already_paid txId={}", tx.getId());
+            return;
+        }
+
+        try {
+            String sessionId = tx.getExternalOrderId();
+
+            com.stripe.model.checkout.Session session =
+                    com.stripe.model.checkout.Session.retrieve(sessionId);
+
+            if ("complete".equals(session.getStatus())) {
+
+                handleRecoveredPayment(tx);
+
+                log.warn("billing.manual.recovered txId={}", tx.getId());
+                return;
+            }
+
+            log.warn("billing.manual.not_complete txId={}", tx.getId());
+
+        } catch (Exception e) {
+            log.error("billing.manual.recovery_failed txId={}", tx.getId(), e);
+            throw new RuntimeException("Manual recovery failed", e);
+        }
+    }
 }
