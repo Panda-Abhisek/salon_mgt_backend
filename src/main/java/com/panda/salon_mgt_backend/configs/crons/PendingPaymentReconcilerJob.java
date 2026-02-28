@@ -17,9 +17,15 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 public class PendingPaymentReconcilerJob {
-
+    private static final int MAX_RETRIES = 10;
     private final BillingTransactionRepository billingRepo;
     private final BillingService billingService;
+
+    private long computeBackoffSeconds(int retryCount) {
+        // 2^n exponential, capped
+        long seconds = (long) Math.pow(2, retryCount) * 60;
+        return Math.min(seconds, 3600); // max 1 hour
+    }
 
     @Scheduled(fixedDelay = 600_000) // every 10 mins
     @Transactional
@@ -38,6 +44,37 @@ public class PendingPaymentReconcilerJob {
         log.warn("billing.reconcile.pending count={}", pending.size());
 
         for (BillingTransaction tx : pending) {
+
+            // 🧠 Skip dead letters
+            if (tx.getStatus() == BillingStatus.FAILED_PERMANENT) {
+                continue;
+            }
+
+            int retries = tx.getRetryCount() == null ? 0 : tx.getRetryCount();
+
+            // 🛑 Retry ceiling
+            if (retries >= MAX_RETRIES) {
+                tx.setStatus(BillingStatus.FAILED_PERMANENT);
+                tx.setLastFailureReason("Retry ceiling exceeded");
+                billingRepo.save(tx);
+
+                log.error("billing.dead_lettered.retry_ceiling txId={}", tx.getId());
+                continue;
+            }
+
+            // ⏳ Exponential backoff skip
+            if (tx.getLastRetryAt() != null) {
+                long waitSeconds = computeBackoffSeconds(retries);
+                Instant nextAllowed = tx.getLastRetryAt().plusSeconds(waitSeconds);
+
+                if (Instant.now().isBefore(nextAllowed)) {
+                    log.debug("billing.reconcile.backoff_skip txId={} nextRetryAt={}",
+                            tx.getId(),
+                            nextAllowed);
+                    continue;
+                }
+            }
+
             try {
                 reconcile(tx);
             } catch (Exception e) {
@@ -79,9 +116,6 @@ public class PendingPaymentReconcilerJob {
                         attempts,
                         tx.getRetryCount());
 
-                try {
-                    Thread.sleep(500L * attempts); // simple backoff
-                } catch (InterruptedException ignored) {}
             }
         }
 
