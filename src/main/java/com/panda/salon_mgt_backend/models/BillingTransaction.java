@@ -47,4 +47,15 @@ public class BillingTransaction {
 
     private Instant createdAt;
     private Instant completedAt;
+
+
+    // 🔥 RESILIENCE FIELDS
+    @Column(name = "retry_count")
+    private Integer retryCount = 0;
+
+    @Column(name = "last_retry_at")
+    private Instant lastRetryAt;
+
+    @Column(name = "last_failure_reason", length = 500)
+    private String lastFailureReason;
 }

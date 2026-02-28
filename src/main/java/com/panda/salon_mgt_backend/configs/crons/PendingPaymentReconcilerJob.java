@@ -68,7 +68,16 @@ public class PendingPaymentReconcilerJob {
             } catch (Exception ex) {
                 attempts++;
 
-                log.warn("billing.reconcile.retry txId={} attempt={}", tx.getId(), attempts);
+                tx.setRetryCount((tx.getRetryCount() == null ? 0 : tx.getRetryCount()) + 1);
+                tx.setLastRetryAt(Instant.now());
+                tx.setLastFailureReason(ex.getMessage());
+
+                billingRepo.save(tx);
+
+                log.warn("billing.reconcile.retry txId={} attempt={} totalRetries={}",
+                        tx.getId(),
+                        attempts,
+                        tx.getRetryCount());
 
                 try {
                     Thread.sleep(500L * attempts); // simple backoff
@@ -77,6 +86,8 @@ public class PendingPaymentReconcilerJob {
         }
 
         tx.setStatus(BillingStatus.FAILED_PERMANENT);
+        tx.setLastFailureReason("Exceeded reconciliation retries");
+        tx.setLastRetryAt(Instant.now());
         billingRepo.save(tx);
 
         log.error("billing.dead_lettered txId={}", tx.getId());
