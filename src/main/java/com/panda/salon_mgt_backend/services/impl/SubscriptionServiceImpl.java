@@ -11,6 +11,7 @@ import com.panda.salon_mgt_backend.services.BillingProvider;
 import com.panda.salon_mgt_backend.services.BillingService;
 import com.panda.salon_mgt_backend.services.SubscriptionService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
+import com.panda.salon_mgt_backend.utils.logging.AuditLogger;
 import com.panda.salon_mgt_backend.utils.subscription.SubscriptionPolicy;
 import com.panda.salon_mgt_backend.utils.subscription.TrialPolicy;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final BillingService billingService;
     private final BillingProvider billingProvider;
     private final BillingTransactionRepository billingRepo;
+    private final AuditLogger auditLogger;
 
     @Override
     public Subscription getCurrentSubscription(Authentication auth) {
@@ -81,7 +83,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         Plan newPlan = planRepository.findByType(targetPlan)
                 .orElseThrow(() -> new IllegalStateException("Target plan not found"));
-
+        auditLogger.log(
+                "UPGRADE_INITIATED",
+                salon.getSalonId(),
+                auth,
+                "targetPlan=" + targetPlan
+        );
         PaymentIntent intent = billingService.createPayment(auth, newPlan);
         return new BillingIntentResponse(intent.checkoutUrl());
     }
@@ -116,6 +123,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .endDate(now.plus(TrialPolicy.TRIAL_DURATION))
                 .build();
 
-        return subscriptionRepository.save(trial);
+        Subscription saved = subscriptionRepository.save(trial);
+
+        auditLogger.log(
+                "TRIAL_STARTED",
+                salon.getSalonId(),
+                auth,
+                "plan=PRO trialDays=14"
+        );
+        return saved;
     }
 }

@@ -12,6 +12,7 @@ import com.panda.salon_mgt_backend.repositories.SubscriptionRepository;
 import com.panda.salon_mgt_backend.services.BillingProvider;
 import com.panda.salon_mgt_backend.services.BillingService;
 import com.panda.salon_mgt_backend.utils.TenantContext;
+import com.panda.salon_mgt_backend.utils.logging.AuditLogger;
 import com.panda.salon_mgt_backend.utils.subscription.SubscriptionDurations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,7 @@ public class BillingServiceImpl implements BillingService {
     private final SubscriptionRepository subscriptionRepository;
     private final PlanRepository planRepository;
     private final StripeWebhookEventRepository webhookRepo;
+    private final AuditLogger auditLogger;
 
     @Override
     @Transactional
@@ -92,7 +94,12 @@ public class BillingServiceImpl implements BillingService {
 
         // Activate subscription WITHOUT Stripe metadata
         activateRecoveredSubscription(tx);
-
+        auditLogger.log(
+                "AUTO_PAYMENT_RECOVERY",
+                tx.getSalon().getSalonId(),
+                null,
+                "txId=" + tx.getId()
+        );
         log.info("billing.recovery.success txId={} salonId={}",
                 tx.getId(),
                 tx.getSalon().getSalonId()
@@ -369,6 +376,12 @@ public class BillingServiceImpl implements BillingService {
                     salon.getSalonId(),
                     sub.getStripeSubscriptionId()
             );
+            auditLogger.log(
+                    "SUBSCRIPTION_CANCEL_REQUESTED",
+                    salon.getSalonId(),
+                    auth,
+                    "stripeSub=" + sub.getStripeSubscriptionId()
+            );
 
         } catch (Exception e) {
             throw new RuntimeException("Stripe cancellation failed", e);
@@ -408,7 +421,12 @@ public class BillingServiceImpl implements BillingService {
                 .build();
 
         subscriptionRepository.save(fallback);
-
+        auditLogger.log(
+                "SUBSCRIPTION_FORCE_EXPIRED",
+                sub.getSalon().getSalonId(),
+                null,
+                "stripeSub=" + sub.getStripeSubscriptionId()
+        );
         log.warn("billing.subscription.force_expired salonId={} stripeSub={} fallback=FREE",
                 sub.getSalon().getSalonId(),
                 sub.getStripeSubscriptionId()
@@ -442,6 +460,12 @@ public class BillingServiceImpl implements BillingService {
                         "subscription.manual_recovery salonId={} txId={}",
                         tx.getSalon().getSalonId(),
                         tx.getId()
+                );
+                auditLogger.log(
+                        "MANUAL_PAYMENT_RECOVERY",
+                        tx.getSalon().getSalonId(),
+                        null,
+                        "txId=" + tx.getId()
                 );
                 return;
             }
