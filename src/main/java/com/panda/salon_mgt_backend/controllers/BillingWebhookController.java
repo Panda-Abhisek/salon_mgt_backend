@@ -24,20 +24,20 @@ public class BillingWebhookController {
             @RequestHeader("Stripe-Signature") String signature
     ) {
         // Keep webhook entry at DEBUG (Stripe is noisy)
-        log.debug("Billing webhook received");
+        log.debug("stripe.webhook.received");
 
         BillingProvider provider = providerFactory.get();
         BillingResult result = provider.verifyPayment(payload, signature);
 
         // Ignore non-checkout events silently
         if (result.isIgnored()) {
-            log.debug("Ignored non-checkout Stripe event");
+            log.debug("stripe.webhook.ignored");
             return ResponseEntity.ok().build();
         }
 
         // Verification failed (signature or parsing issue)
         if (!result.success()) {
-            log.warn("Stripe webhook verification failed");
+            log.warn("stripe.webhook.verification_failed");
             return ResponseEntity.ok().build();
         }
 
@@ -45,9 +45,11 @@ public class BillingWebhookController {
         billingService.handlePaymentResult(result);
 
         // Single meaningful billing log
-        log.info("Billing processed txId={} paymentIntent={}",
+        log.info("stripe.webhook.processed txId={} paymentIntent={} stripeSub={}",
                 result.txId(),
-                result.externalPaymentId());
+                result.externalPaymentId(),
+                result.stripeSubscriptionId()
+        );
 
         return ResponseEntity.ok().build();
     }

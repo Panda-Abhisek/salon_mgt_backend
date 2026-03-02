@@ -67,7 +67,11 @@ public class StripeBillingProvider implements BillingProvider {
             return new CheckoutSession(session.getUrl(), session.getId());
 
         } catch (Exception e) {
-            log.error("Stripe error", e);
+            log.error("stripe.checkout.failed plan={} reason={}",
+                    plan.getType(),
+                    e.getMessage(),
+                    e
+            );
             throw new RuntimeException("Stripe checkout failed", e);
         }
     }
@@ -78,7 +82,7 @@ public class StripeBillingProvider implements BillingProvider {
             Event event = Webhook.constructEvent(payload, signature, webhookSecret);
 
             String type = event.getType();
-            log.debug("Stripe webhook received type={}", type);
+            log.debug("stripe.event.received type={}", type);
 
             if ("customer.subscription.deleted".equals(type)) {
 
@@ -88,7 +92,7 @@ public class StripeBillingProvider implements BillingProvider {
 
                 String subId = stripeSub.getId();
 
-                log.warn("Stripe subscription deleted subscriptionId={}", subId);
+                log.warn("stripe.subscription.deleted stripeSub={}", subId);
 
                 return new BillingResult(
                         null,               // txId not needed
@@ -109,8 +113,10 @@ public class StripeBillingProvider implements BillingProvider {
                 String subId = invoice.getSubscription();
                 String paymentIntentId = invoice.getPaymentIntent();
 
-                log.info("Stripe renewal success subscriptionId={} paymentIntent={}",
-                        subId, paymentIntentId);
+                log.info("stripe.invoice.paid stripeSub={} paymentIntent={}",
+                        subId,
+                        paymentIntentId
+                );
 
                 return new BillingResult(
                         null,
@@ -130,7 +136,7 @@ public class StripeBillingProvider implements BillingProvider {
 
                 String subId = invoice.getSubscription();
 
-                log.warn("Stripe renewal FAILED subscriptionId={}", subId);
+                log.warn("stripe.invoice.failed stripeSub={}", subId);
 
                 return new BillingResult(
                         null,
@@ -153,7 +159,7 @@ public class StripeBillingProvider implements BillingProvider {
 
                 String txId = rawSession.getMetadata().get("txId");
                 if (txId == null) {
-                    log.warn("Stripe session missing txId sessionId={}", rawSession.getId());
+                    log.warn("stripe.checkout.missing_tx sessionId={}", rawSession.getId());
                     return new BillingResult(null, null, null, null, null, false, true);
                 }
 
@@ -199,7 +205,7 @@ public class StripeBillingProvider implements BillingProvider {
             return new BillingResult(null, null, null, null, null, false, true);
 
         } catch (Exception e) {
-            log.error("Stripe webhook verification failed", e);
+            log.error("stripe.webhook.exception reason={}", e.getMessage(), e);
             return new BillingResult(null, null, null, null, null, false, true);
         }
     }
