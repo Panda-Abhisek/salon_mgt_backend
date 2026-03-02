@@ -37,18 +37,23 @@ public class BillingMetricsServiceImpl implements BillingMetricsService {
     @Override
     public BillingMetricsResponse getMetrics() {
         try {
+            log.info("billing.metrics.compute.started");
             long totalActive = subscriptionRepository.countTotalActive();
-
+            log.debug("billing.metrics.total_active={}", totalActive);
             Map<PlanType, Long> activeByPlan = mapActiveByPlan();
-
+            log.debug("billing.metrics.plan_distribution={}", activeByPlan);
             Instant now = Instant.now();
             Instant expiringCutoff = now.plus(7, ChronoUnit.DAYS);
             Instant last7Days = now.minus(7, ChronoUnit.DAYS);
 
             long expiringSoon = subscriptionRepository.countExpiringBefore(expiringCutoff);
             long paidExpiredLast7Days = subscriptionRepository.countPaidExpiredSince(last7Days);
-
             long activePaid = subscriptionRepository.countActivePaid();
+            log.debug(
+                    "billing.metrics.churn_inputs expiredPaid={} activePaid={}",
+                    paidExpiredLast7Days,
+                    activePaid
+            );
             ChurnDto churn = calculatePaidChurn(paidExpiredLast7Days, activePaid);
 
             Instant trialsSoonCutoff = now.plus(3, ChronoUnit.DAYS);
@@ -68,6 +73,16 @@ public class BillingMetricsServiceImpl implements BillingMetricsService {
                     Math.round(conversionRate * 100.0) / 100.0
             );
 
+            log.debug(
+                    "billing.metrics.conversion trials={} endingSoon={} conversions7d={} rate={}",
+                    conversion.activeTrials(),
+                    conversion.trialsEndingSoon(),
+                    conversion.conversions7d(),
+                    conversion.conversionRate()
+            );
+
+            log.info("billing.metrics.compute.completed");
+
             return new BillingMetricsResponse(
                     totalActive,
                     activeByPlan,
@@ -78,7 +93,7 @@ public class BillingMetricsServiceImpl implements BillingMetricsService {
             );
 
         } catch (Exception ex) {
-            log.warn("billing.metrics.failed", ex);
+            log.error("billing.metrics.compute_failed reason={}", ex.getMessage(), ex);
             return emptyMetrics();
         }
     }
@@ -91,7 +106,7 @@ public class BillingMetricsServiceImpl implements BillingMetricsService {
             Long count = (Long) row[1];
             map.put(plan, count);
         }
-
+        log.trace("billing.metrics.plan_map_raw_rows={}", map);
         return map;
     }
 
