@@ -41,7 +41,7 @@ public class PendingPaymentReconcilerJob {
 
         if (pending.isEmpty()) return;
 
-        log.warn("billing.reconcile.pending count={}", pending.size());
+        log.info("billing.reconcile.batch_started count={}", pending.size());
 
         for (BillingTransaction tx : pending) {
 
@@ -58,7 +58,8 @@ public class PendingPaymentReconcilerJob {
                 tx.setLastFailureReason("Retry ceiling exceeded");
                 billingRepo.save(tx);
 
-                log.error("billing.dead_lettered.retry_ceiling txId={}", tx.getId());
+                log.error("billing.dead_lettered.retry_ceiling txId={} reason=retry_limit_exceeded",
+                        tx.getId());
                 continue;
             }
 
@@ -68,7 +69,7 @@ public class PendingPaymentReconcilerJob {
                 Instant nextAllowed = tx.getLastRetryAt().plusSeconds(waitSeconds);
 
                 if (Instant.now().isBefore(nextAllowed)) {
-                    log.debug("billing.reconcile.backoff_skip txId={} nextRetryAt={}",
+                    log.debug("billing.reconcile.skipped_backoff txId={} nextRetryAt={}",
                             tx.getId(),
                             nextAllowed);
                     continue;
@@ -78,7 +79,10 @@ public class PendingPaymentReconcilerJob {
             try {
                 reconcile(tx);
             } catch (Exception e) {
-                log.error("billing.reconcile.failed txId={}", tx.getId(), e);
+                log.error("billing.reconcile.exception txId={} reason={}",
+                        tx.getId(),
+                        e.getMessage(),
+                        e);
             }
         }
     }
@@ -95,9 +99,9 @@ public class PendingPaymentReconcilerJob {
 
                 if ("complete".equals(session.getStatus())) {
                     billingService.handleRecoveredPayment(tx);
-                    log.warn("billing.recovered txId={}", tx.getId());
+                    log.info("billing.reconcile.recovered txId={}", tx.getId());
                 } else {
-                    log.warn("billing.reconcile.still_pending txId={}", tx.getId());
+                    log.info("billing.reconcile.session_pending txId={}", tx.getId());
                 }
 
                 return; // success or still pending
@@ -111,7 +115,7 @@ public class PendingPaymentReconcilerJob {
 
                 billingRepo.save(tx);
 
-                log.warn("billing.reconcile.retry txId={} attempt={} totalRetries={}",
+                log.warn("billing.reconcile.retry_attempt txId={} attempt={} totalRetries={}",
                         tx.getId(),
                         attempts,
                         tx.getRetryCount());
@@ -124,6 +128,7 @@ public class PendingPaymentReconcilerJob {
         tx.setLastRetryAt(Instant.now());
         billingRepo.save(tx);
 
-        log.error("billing.dead_lettered txId={}", tx.getId());
+        log.error("billing.dead_lettered.final txId={} reason=reconcile_failed",
+                tx.getId());
     }
 }
