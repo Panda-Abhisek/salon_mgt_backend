@@ -34,15 +34,27 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
 
         try {
             filterChain.doFilter(request, response);
+        } catch (Exception ex) {
+            log.error(
+                    "event=http.request.failed correlationId={} method={} path={} ip={}",
+                    correlationId,
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    clientIp(request),
+                    ex
+            );
+            throw ex;
         } finally {
             long durationMs = (System.nanoTime() - start) / 1_000_000;
 
             log.info(
-                    "HTTP_REQUEST_COMPLETED method={} path={} status={} durationMs={} query={}",
+                    "event=http.request.completed correlationId={} method={} path={} status={} durationMs={} ip={} query={}",
+                    correlationId,
                     request.getMethod(),
                     request.getRequestURI(),
                     response.getStatus(),
                     durationMs,
+                    clientIp(request),
                     safeQuery(request)
             );
 
@@ -60,5 +72,11 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     private String safeQuery(HttpServletRequest request) {
         String q = request.getQueryString();
         return q == null ? "" : q;
+    }
+
+    private String clientIp(HttpServletRequest request) {
+        String xf = request.getHeader("X-Forwarded-For");
+        if (xf != null) return xf.split(",")[0];
+        return request.getRemoteAddr();
     }
 }

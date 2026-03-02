@@ -73,9 +73,10 @@ server:
 logging:
   level:
     root: INFO
-    org.springframework.web: DEBUG
+#    org.springframework.web: DEBUG
 #    org.hibernate: WARN
-
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{correlationId}] %logger{36} - %msg%n"
 billing:
   provider: STRIPE
 

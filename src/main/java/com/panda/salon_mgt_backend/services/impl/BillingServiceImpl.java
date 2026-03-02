@@ -67,7 +67,8 @@ public class BillingServiceImpl implements BillingService {
         tx.setStatus(BillingStatus.PENDING);
 
         billingRepo.save(tx);
-        log.info("billing.intent.created salonId={} plan={} amount={}",
+        log.info("billing.checkout.created txId={} salonId={} plan={} amount={}",
+                tx.getId(),
                 salon.getSalonId(),
                 newPlan.getType(),
                 newPlan.getPriceMonthly()
@@ -92,7 +93,10 @@ public class BillingServiceImpl implements BillingService {
         // Activate subscription WITHOUT Stripe metadata
         activateRecoveredSubscription(tx);
 
-        log.warn("billing.recovery.activation txId={}", tx.getId());
+        log.info("billing.recovery.success txId={} salonId={}",
+                tx.getId(),
+                tx.getSalon().getSalonId()
+        );
     }
 
     @Transactional
@@ -122,9 +126,11 @@ public class BillingServiceImpl implements BillingService {
 
         subscriptionRepository.save(sub);
 
-        log.info("billing.renewal.recovered salonId={} stripeSub={}",
+        log.info("billing.renewal.success salonId={} stripeSub={} plan={}",
                 sub.getSalon().getSalonId(),
-                sub.getStripeSubscriptionId());
+                sub.getStripeSubscriptionId(),
+                sub.getPlan().getType()
+        );
     }
 
     @Transactional
@@ -160,9 +166,12 @@ public class BillingServiceImpl implements BillingService {
 
         subscriptionRepository.save(sub);
 
-        log.warn("billing.renewal.failed salonId={} retryCount={}",
+        log.warn("billing.renewal.failed salonId={} stripeSub={} retries={} delinquent={}",
                 sub.getSalon().getSalonId(),
-                sub.getRetryCount());
+                sub.getStripeSubscriptionId(),
+                sub.getRetryCount(),
+                sub.getDelinquent()
+        );
     }
 
     @Override
@@ -219,7 +228,11 @@ public class BillingServiceImpl implements BillingService {
         activateSubscription(tx, result);
         persistWebhook(eventId);
 
-        log.info("billing.activation.confirmed txId={}", tx.getId());
+        log.info("billing.activation.success txId={} salonId={} stripeSub={}",
+                tx.getId(),
+                tx.getSalon().getSalonId(),
+                result.stripeSubscriptionId()
+        );
     }
 
     @Transactional
@@ -333,9 +346,10 @@ public class BillingServiceImpl implements BillingService {
             sub.setCancelAtPeriodEnd(true);
             subscriptionRepository.save(sub);
 
-            log.info("billing.cancel_requested salonId={} stripeSub={}",
+            log.info("billing.subscription.cancel_requested salonId={} stripeSub={} cancelAtPeriodEnd=true",
                     salon.getSalonId(),
-                    sub.getStripeSubscriptionId());
+                    sub.getStripeSubscriptionId()
+            );
 
         } catch (Exception e) {
             throw new RuntimeException("Stripe cancellation failed", e);
@@ -376,9 +390,10 @@ public class BillingServiceImpl implements BillingService {
 
         subscriptionRepository.save(fallback);
 
-        log.warn("billing.subscription.force_expired salonId={} stripeSub={}",
+        log.warn("billing.subscription.force_expired salonId={} stripeSub={} fallback=FREE",
                 sub.getSalon().getSalonId(),
-                sub.getStripeSubscriptionId());
+                sub.getStripeSubscriptionId()
+        );
     }
 
     @Transactional
@@ -400,14 +415,21 @@ public class BillingServiceImpl implements BillingService {
 
                 handleRecoveredPayment(tx);
 
-                log.warn("billing.manual.recovered txId={}", tx.getId());
+                log.info("billing.manual.recovery.success txId={} salonId={}",
+                        tx.getId(),
+                        tx.getSalon().getSalonId()
+                );
                 return;
             }
 
             log.warn("billing.manual.not_complete txId={}", tx.getId());
 
         } catch (Exception e) {
-            log.error("billing.manual.recovery_failed txId={}", tx.getId(), e);
+            log.error("billing.manual.recovery.failed txId={} reason={}",
+                    tx.getId(),
+                    e.getMessage(),
+                    e
+            );
             throw new RuntimeException("Manual recovery failed", e);
         }
     }
