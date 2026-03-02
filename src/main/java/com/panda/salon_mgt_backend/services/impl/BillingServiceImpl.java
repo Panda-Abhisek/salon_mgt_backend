@@ -82,7 +82,7 @@ public class BillingServiceImpl implements BillingService {
 
         // Prevent double recovery
         if (tx.getStatus() == BillingStatus.PAID) {
-            log.warn("billing.recovery.already_paid txId={}", tx.getId());
+            log.warn("billing.recovery.idempotent txId={}", tx.getId());
             return;
         }
 
@@ -159,9 +159,10 @@ public class BillingServiceImpl implements BillingService {
         // Mark delinquent after repeated failures
         if (sub.getRetryCount() >= 3) {
             sub.setDelinquent(true);
-            log.error("billing.delinquent salonId={} retries={}",
+            log.error("billing.account.delinquent salonId={} retries={} stripeSub={}",
                     sub.getSalon().getSalonId(),
-                    sub.getRetryCount());
+                    sub.getRetryCount(),
+                    sub.getStripeSubscriptionId());
         }
 
         subscriptionRepository.save(sub);
@@ -216,7 +217,7 @@ public class BillingServiceImpl implements BillingService {
                 .orElseThrow(() -> new IllegalStateException("Transaction not found"));
 
         if (tx.getStatus() == BillingStatus.PAID) {
-            log.info("billing.payment.already_processed txId={}", tx.getId());
+            log.info("billing.activation.idempotent txId={}", tx.getId());
             return;
         }
 
@@ -422,7 +423,7 @@ public class BillingServiceImpl implements BillingService {
                 return;
             }
 
-            log.warn("billing.manual.not_complete txId={}", tx.getId());
+            log.warn("billing.manual.recovery_incomplete txId={}", tx.getId());
 
         } catch (Exception e) {
             log.error("billing.manual.recovery.failed txId={} reason={}",
