@@ -107,7 +107,11 @@ public class BillingServiceImpl implements BillingService {
                 .orElse(null);
 
         if (sub == null) {
-            log.warn("renewal.success.unknown stripeSub={}", result.stripeSubscriptionId());
+            log.info(
+                    "billing.renewal.success salonId={} stripeSub={}",
+                    sub.getSalon().getSalonId(),
+                    result.stripeSubscriptionId()
+            );
             return;
         }
 
@@ -141,7 +145,10 @@ public class BillingServiceImpl implements BillingService {
                 .orElse(null);
 
         if (sub == null) {
-            log.warn("renewal.failed.unknown stripeSub={}", result.stripeSubscriptionId());
+            log.warn(
+                    "billing.renewal.failed_detected stripeSub={}",
+                    result.stripeSubscriptionId()
+            );
             return;
         }
 
@@ -271,6 +278,11 @@ public class BillingServiceImpl implements BillingService {
                 .build();
 
         subscriptionRepository.save(newSub);
+        log.info(
+                "subscription.activated salonId={} plan={} via=stripe_checkout",
+                salon.getSalonId(),
+                plan.getType()
+        );
     }
 
     @Transactional
@@ -303,6 +315,12 @@ public class BillingServiceImpl implements BillingService {
                 .build();
 
         subscriptionRepository.save(newSub);
+
+        log.warn(
+                "subscription.recovered_activation salonId={} plan={} source=reconciler",
+                salon.getSalonId(),
+                plan.getType()
+        );
     }
 
     private void persistWebhook(String eventId) {
@@ -416,9 +434,14 @@ public class BillingServiceImpl implements BillingService {
 
                 handleRecoveredPayment(tx);
 
-                log.info("billing.manual.recovery.success txId={} salonId={}",
-                        tx.getId(),
-                        tx.getSalon().getSalonId()
+//                log.info("billing.manual.recovery.success txId={} salonId={}",
+//                        tx.getId(),
+//                        tx.getSalon().getSalonId()
+//                );
+                log.warn(
+                        "subscription.manual_recovery salonId={} txId={}",
+                        tx.getSalon().getSalonId(),
+                        tx.getId()
                 );
                 return;
             }

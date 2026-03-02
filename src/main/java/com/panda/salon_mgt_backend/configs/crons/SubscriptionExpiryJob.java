@@ -26,11 +26,11 @@ public class SubscriptionExpiryJob {
     @Transactional
     @Scheduled(cron = "0 0 2 * * *")
     public void expireSubscriptions() {
-
+        log.info("subscription.expiry.job.started");
         Instant now = Instant.now();
 
         List<Subscription> subs = subscriptionRepository.findAll();
-
+        log.debug("subscription.expiry.scan_size={}", subs.size());
         Plan freePlan = planRepository.findByType(PlanType.FREE)
                 .orElseThrow();
 
@@ -44,9 +44,10 @@ public class SubscriptionExpiryJob {
 
                 sub.setStatus(SubscriptionStatus.EXPIRED);
 
-                log.info("subscription.trial_expired salonId={} expiredAt={}",
+                log.warn(
+                        "subscription.trial_expired salonId={} trialEnd={} fallbackPlan=FREE",
                         sub.getSalon().getSalonId(),
-                        now
+                        sub.getEndDate()
                 );
 
                 // FREE fallback
@@ -71,10 +72,12 @@ public class SubscriptionExpiryJob {
 
                 sub.setStatus(SubscriptionStatus.GRACE);
 
-                log.info("subscription.entered_grace salonId={} plan={} graceStart={}",
+                log.warn(
+                        "subscription.entered_grace salonId={} plan={} graceStart={} originalEnd={}",
                         sub.getSalon().getSalonId(),
                         sub.getPlan().getType(),
-                        now
+                        now,
+                        sub.getEndDate()
                 );
             }
 
@@ -92,7 +95,8 @@ public class SubscriptionExpiryJob {
 
                     sub.setStatus(SubscriptionStatus.EXPIRED);
 
-                    log.info("subscription.expired salonId={} plan={} expiredAt={}",
+                    log.error(
+                            "subscription.expired_after_grace salonId={} plan={} expiredAt={} graceWindowDays=7",
                             salon.getSalonId(),
                             oldPlan,
                             now
@@ -109,10 +113,14 @@ public class SubscriptionExpiryJob {
 
                     subscriptionRepository.save(fallback);
 
-                    log.info("subscription.fallback salonId={} newPlan=FREE activatedAt={}",
+                    log.warn(
+                            "subscription.fallback_to_free salonId={} fromPlan={} activatedAt={}",
                             salon.getSalonId(),
+                            oldPlan,
                             now
                     );
+
+                    log.info("subscription.expiry.job.completed");
                 }
             }
         }
