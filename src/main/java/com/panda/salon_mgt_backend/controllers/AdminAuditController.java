@@ -4,6 +4,7 @@ import com.panda.salon_mgt_backend.payloads.AuditLogDto;
 import com.panda.salon_mgt_backend.services.analytics.AuditLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,25 +20,25 @@ public class AdminAuditController {
     private final AuditLogService service;
 
     @GetMapping("/recent")
-    public List<AuditLogDto> recent() {
-        return service.recent();
+    public ResponseEntity<List<AuditLogDto>> recent() {
+        return ResponseEntity.ok(service.recent());
     }
 
     @GetMapping("/salon/{id}")
-    public List<AuditLogDto> bySalon(@PathVariable Long id) {
-        return service.bySalon(id);
+    public ResponseEntity<List<AuditLogDto>> bySalon(@PathVariable Long id) {
+        return ResponseEntity.ok(service.bySalon(id));
     }
 
     @GetMapping("/action/{action}")
-    public List<AuditLogDto> byAction(@PathVariable String action) {
-        return service.byAction(action);
+    public ResponseEntity<List<AuditLogDto>> byAction(@PathVariable String action) {
+        return ResponseEntity.ok(service.byAction(action));
     }
 
     @GetMapping("/range")
-    public List<AuditLogDto> byRange(
+    public ResponseEntity<List<AuditLogDto>> byRange(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
     ) {
-        return service.byRange(from, to);
+        return ResponseEntity.ok(service.byRange(from, to));
     }
 }
