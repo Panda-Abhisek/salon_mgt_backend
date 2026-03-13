@@ -1,5 +1,5 @@
 # STAGE 1: Build (Keep as is, it's efficient)
-FROM eclipse-temurin:21-jdk-alpine AS builder
+FROM eclipse-temurin:25-jdk-alpine AS builder
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
@@ -7,7 +7,7 @@ RUN apk add --no-cache maven
 RUN mvn clean package -DskipTests
 
 # STAGE 2: Run (Optimised for 1GB RAM)
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 WORKDIR /app
 
 # Create a non-root user for security
