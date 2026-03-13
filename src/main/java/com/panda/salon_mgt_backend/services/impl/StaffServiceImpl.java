@@ -75,7 +75,8 @@ public class StaffServiceImpl implements StaffService {
         staff.setPassword(passwordEncoder.encode(request.password()));
         staff.setEnabled(true);
         staff.setStaffSalon(salon);
-        staff.setRoles(Set.of(userRole, staffRole));
+//        staff.setRoles(Set.of(userRole, staffRole));
+        staff.setRoles(Set.of(staffRole));
 
         long count = userRepository.countStaffBySalon(salon);
         planGuard.assertStaffLimit(auth, count);
