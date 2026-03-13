@@ -50,6 +50,7 @@ public class SalonServiceImpl implements SalonService {
         // ---- ROLE UPGRADE ----
         Role salonAdminRole = roleRepository.findByRoleName(AppRole.ROLE_SALON_ADMIN)
                 .orElseThrow(() -> new ResourceNotFoundException("ROLE_SALON_ADMIN not found"));
+        user.getRoles().clear();
         user.getRoles().add(salonAdminRole);
 
         // 2️⃣ Assign FREE plan by default
