@@ -56,7 +56,8 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public ResponseEntity<MessageResponse> registerUser(UserRegisterRequest request) {
-        System.out.println("username: " + request.getUsername() + ", email: " + request.getEmail() + ", password: " + request.getPassword());
+        //System.out.println("username: " + request.getUsername() + ", email: " + request.getEmail() + ", password: " + request.getPassword());
+
         // validate if user with the same username or email already exists
         if (userRepository.existsByUserName(request.getUsername())) {
             return ResponseEntity.badRequest().body(new MessageResponse("Error: Username is already taken!"));
