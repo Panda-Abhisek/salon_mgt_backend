@@ -115,7 +115,7 @@ public class BookingServiceImpl implements BookingService {
         Services service = servicesRepository
                 .findById(req.serviceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Service not found"));
-        tenantGuard.assertServiceBelongsToTenant(service, auth);
+//        tenantGuard.assertServiceBelongsToTenant(service, auth);
 
         if (!service.isActive()) {
             throw new InactiveException("Service is inactive");
@@ -124,7 +124,7 @@ public class BookingServiceImpl implements BookingService {
         User staff = userRepository
                 .findById(req.staffId())
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
-        tenantGuard.assertStaffBelongsToTenant(staff, auth);
+//        tenantGuard.assertStaffBelongsToTenant(staff, auth);
 
         if (!staff.isEnabled()) {
             throw new InactiveException("Staff is inactive");
@@ -153,7 +153,7 @@ public class BookingServiceImpl implements BookingService {
         }
 
         Booking booking = new Booking();
-        booking.setSalon(tenantContext.getSalon(auth)); // 🔥 better than getMySalonEntity
+        booking.setSalon(service.getSalon()); // 🔥 better than getMySalonEntity
         booking.setService(service);
         booking.setStaff(staff);
         booking.setCustomer(customer);        // 🔥 required
@@ -316,11 +316,11 @@ public class BookingServiceImpl implements BookingService {
 
         User staff = userRepository.findById(staffId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found"));
-        tenantGuard.assertStaffBelongsToTenant(staff, auth);
+//        tenantGuard.assertStaffBelongsToTenant(staff, auth);
 
         Services service = servicesRepository.findById(serviceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Service not found"));
-        tenantGuard.assertServiceBelongsToTenant(service, auth);
+//        tenantGuard.assertServiceBelongsToTenant(service, auth);
 
         if (!service.isActive()) {
             throw new IllegalStateException("Service is inactive");
