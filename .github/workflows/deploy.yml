@@ -29,8 +29,8 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          docker build -t abhisek/salon-mgt-api:latest .
-          docker push abhisek/salon-mgt-api:latest
+          docker build -t abhisekpanda/salon-mgt-api:latest .
+          docker push abhisekpanda/salon-mgt-api:latest
 
       - name: Deploy to Oracle Cloud via SSH
         uses: appleboy/ssh-action@v0.1.10
@@ -40,7 +40,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             # Pull the new image
-            docker pull abhisek/salon-mgt-api:latest
+            docker pull abhisekpanda/salon-mgt-api:latest
             
             # Stop and remove the old container
             docker stop salon-mgt-app || true
@@ -54,4 +54,4 @@ jobs:
               --env-file ~/salon-mgt.env \
               -e SPRING_PROFILES_ACTIVE=prod \
               --restart always \
-              abhisek/salon-mgt-api:latest
+              abhisekpanda/salon-mgt-api:latest
