@@ -49,7 +49,7 @@ security:
 
 app:
   cors:
-    front-end-url: ${FRONTEND_URL:http://localhost:5173}
+    front-end-url: ${FRONTEND_URL}
   auth:
     frontend:
       success-redirect-url: ${FRONTEND_SUCCESS_REDIRECT_URL:http://localhost:5173/oauth/success}
