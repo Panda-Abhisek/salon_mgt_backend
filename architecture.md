@@ -17,9 +17,10 @@ A **multi-tenant salon management REST API** built with Spring Boot 4. The syste
 | Database          | PostgreSQL                                |
 | Validation        | Jakarta Bean Validation                   |
 | Object Mapping    | ModelMapper 3.2.4                         |
-| API Documentation | Springdoc OpenAPI (Swagger UI) 2.8.9      |
+| API Documentation | Springdoc OpenAPI (Swagger UI)            |
 | Build Tool        | Maven                                     |
 | Boilerplate       | Lombok                                    |
+| Billing           | Stripe Integration                        |
 
 ---
 
@@ -29,122 +30,152 @@ A **multi-tenant salon management REST API** built with Spring Boot 4. The syste
 src/main/java/com/panda/salon_mgt_backend/
 ├── SalonMgtBackendApplication.java      # Entry point
 │
-├── configs/                             # Application-level configuration
-│   ├── APIDocConfig.java                #   OpenAPI/Swagger metadata
-│   └── ModelMapperConfig.java           #   ModelMapper bean
+├── configs/                             # Application configuration
+│   ├── APIDocConfig.java               # OpenAPI/Swagger metadata
+│   ├── ModelMapperConfig.java          # ModelMapper bean
+│   ├── PlanBootstrap.java              # Seed plan data
+│   ├── billing/
+│   │   ├── StripeBillingProvider.java  # Stripe payment processing
+│   │   ├── StripePriceConfig.java      # Stripe price IDs
+│   │   └── BillingProviderFactory.java # Provider abstraction
+│   └── crons/
+│       ├── SubscriptionExpiryJob.java   # Expire subscriptions daily
+│       └── PendingPaymentReconcilerJob.java # Retry failed payments
 │
 ├── controllers/                         # REST API layer
-│   ├── AuthController.java              #   Authentication endpoints
-│   ├── SalonController.java             #   Salon CRUD (owner-scoped)
-│   ├── ServicesController.java          #   Service management
-│   ├── StaffController.java             #   Staff management
-│   ├── BookingController.java           #   Booking lifecycle
-│   ├── AnalyticsController.java         #   Dashboard analytics & trends
-│   ├── PublicSalonController.java       #   Unauthenticated salon browsing
-│   └── HelloController.java             #   Health check
+│   ├── AuthController.java             # Authentication
+│   ├── SalonController.java            # Salon CRUD
+│   ├── ServicesController.java         # Service management
+│   ├── StaffController.java            # Staff management
+│   ├── BookingController.java          # Booking lifecycle
+│   ├── AnalyticsController.java        # Dashboard analytics
+│   ├── PublicSalonController.java       # Public salon browsing
+│   ├── SubscriptionController.java     # Subscription management
+│   ├── BillingPortalController.java    # Stripe customer portal
+│   ├── BillingWebhookController.java   # Stripe webhooks
+│   ├── BillingMetricsController.java   # Revenue metrics
+│   ├── PlanController.java             # Plan management
+│   ├── ForecastController.java         # Booking predictions
+│   ├── RevenueTimelineController.java  # Revenue timeline
+│   ├── AdminAuditController.java       # Audit log viewing
+│   └── HelloController.java            # Health check
 │
-├── exceptions/                          # Global error handling
-│   ├── GlobalExceptionHandler.java      #   @RestControllerAdvice
-│   ├── ErrorResponse.java               #   Standard error body
-│   ├── ResourceNotFoundException.java   #   404
-│   ├── AlreadyExistsException.java      #   409
-│   ├── CanNotException.java             #   409 (business rule violation)
-│   ├── DeactivateException.java         #   409 (deactivation blocked)
-│   ├── InactiveException.java           #   409 (inactive resource)
-│   └── RefreshTokenException.java       #   401 (token issues)
+├── exceptions/                          # Error handling
+│   ├── GlobalExceptionHandler.java     # @RestControllerAdvice
+│   ├── ResourceNotFoundException.java  # 404
+│   ├── AlreadyExistsException.java     # 409
+│   ├── CanNotException.java            # 409 (business rule)
+│   ├── DeactivateException.java        # 409 (deactivation blocked)
+│   ├── InactiveException.java          # 409 (inactive resource)
+│   ├── RefreshTokenException.java     # 401 (token issues)
+│   ├── PlanLimitExceededException.java # 403 (plan limits)
+│   └── PlanUpgradeRequiredException.java # 402 (upgrade needed)
 │
 ├── models/                              # JPA entities & enums
-│   ├── User.java                        #   Users (customers, staff, admins)
-│   ├── Salon.java                       #   Salon entity (1:1 with owner)
-│   ├── Services.java                    #   Salon services offered
-│   ├── Booking.java                     #   Appointment bookings
-│   ├── Role.java                        #   Role entity
-│   ├── RefreshToken.java                #   Persisted refresh tokens
-│   ├── AppRole.java                     #   Role enum
-│   ├── BookingStatus.java               #   Booking lifecycle states
-│   ├── BookingRange.java                #   Query filter enum
-│   ├── TrendRange.java                  #   Analytics time range enum
-│   └── Provider.java                    #   Auth provider enum (future)
+│   ├── User.java                       # Users (customer, staff, admin)
+│   ├── Salon.java                      # Salon entity (1:1 with owner)
+│   ├── Services.java                   # Salon services
+│   ├── Booking.java                    # Appointments
+│   ├── Role.java                       # Role entity
+│   ├── RefreshToken.java               # Persisted refresh tokens
+│   ├── Subscription.java               # Salon subscriptions
+│   ├── Plan.java                       # Subscription plans
+│   ├── BillingTransaction.java         # Payment records
+│   ├── StripeWebhookEvent.java         # Webhook event storage
+│   ├── AuditLog.java                   # Audit trail
+│   ├── AppRole.java                   # Role enum
+│   ├── BookingStatus.java              # Booking states
+│   ├── SubscriptionStatus.java         # Subscription states
+│   ├── BillingStatus.java              # Payment states
+│   ├── PlanType.java                   # Plan types
+│   ├── TrendRange.java                 # Analytics time ranges
+│   ├── BookingRange.java               # Query filter enum
+│   └── Provider.java                   # Auth provider enum
 │
-├── payloads/                            # DTOs (request/response records)
-│   ├── TokenResponse.java               #   JWT access token response
-│   ├── RefreshTokenRequest.java         #   Refresh token request body
-│   ├── UserResponse.java                #   User profile DTO
-│   ├── SalonCreateRequest.java          #   Salon creation/update
-│   ├── SalonResponse.java               #   Salon response DTO
-│   ├── PublicSalonResponse.java         #   Public salon listing DTO
-│   ├── ServiceCreateRequest.java        #   Service creation (validated)
-│   ├── ServiceUpdateRequest.java        #   Service update (validated)
-│   ├── ServiceResponse.java             #   Service response DTO
-│   ├── StaffCreateRequest.java          #   Staff creation (validated)
-│   ├── StaffResponse.java               #   Staff response with services
-│   ├── AssignServicesRequest.java       #   Assign services to staff
-│   ├── AssignStaffRequest.java          #   Assign staff to service
-│   ├── CreateBookingRequest.java        #   Booking creation
-│   ├── BookingResponse.java             #   Booking response DTO
-│   ├── PageResponse.java                #   Generic paginated response
-│   ├── TimeSlot.java                    #   Availability slot DTO
-│   ├── AdminDashboardResponse.java      #   Dashboard aggregates
-│   ├── LeaderboardItemDTO.java          #   Top staff/services ranking
-│   ├── UserDto.java                     #   Legacy user DTO
-│   └── RoleDto.java                     #   Legacy role DTO
+├── payloads/                           # DTOs (records)
+│   ├── TokenResponse.java              # JWT response
+│   ├── SalonResponse.java              # Salon DTOs
+│   ├── ServiceResponse.java            # Service DTOs
+│   ├── StaffResponse.java              # Staff DTOs
+│   ├── BookingResponse.java            # Booking DTOs
+│   ├── PageResponse.java               # Paginated wrapper
+│   ├── TimeSlot.java                   # Availability slot
+│   ├── AdminDashboardResponse.java     # Dashboard aggregates
+│   ├── LeaderboardItemDTO.java         # Top rankings
+│   ├── SubscriptionLifecycleResponse.java # Sub details
+│   ├── ConversionMetrics.java          # Billing metrics
+│   ├── ForecastPointDTO.java           # Prediction data
+│   └── AuditLogDto.java                # Audit trail DTO
 │
-├── repositories/                        # Spring Data JPA interfaces
-│   ├── UserRepository.java              #   User queries + fetch joins
-│   ├── SalonRepository.java             #   Salon queries
-│   ├── ServicesRepository.java          #   Service queries + projections
-│   ├── BookingRepository.java           #   Complex booking queries
-│   ├── RoleRepository.java              #   Role lookup
-│   └── RefreshTokenRepository.java      #   Token storage
+├── repositories/                        # Spring Data JPA
+│   ├── UserRepository.java             # User queries
+│   ├── SalonRepository.java            # Salon queries
+│   ├── ServicesRepository.java         # Service queries
+│   ├── BookingRepository.java          # Complex booking queries
+│   ├── RoleRepository.java             # Role lookup
+│   ├── RefreshTokenRepository.java     # Token storage
+│   ├── SubscriptionRepository.java    # Subscription queries
+│   ├── PlanRepository.java            # Plan queries
+│   ├── BillingTransactionRepository.java # Payment queries
+│   ├── AuditLogRepository.java        # Audit log queries
+│   └── StripeWebhookEventRepository.java # Webhook storage
 │
 ├── security/                            # Security infrastructure
-│   ├── SecurityConfig.java              #   Filter chain + seed data
-│   ├── CorsConfig.java                  #   CORS configuration
+│   ├── SecurityConfig.java             # Filter chain + seed data
+│   ├── CorsConfig.java                # CORS configuration
 │   ├── jwt/
-│   │   ├── JwtService.java              #   Token generation & validation
-│   │   ├── AuthTokenFilter.java         #   JWT authentication filter
-│   │   ├── AuthEntryPointJwt.java       #   401 handler
-│   │   └── JwtAccessDeniedHandler.java  #   403 handler
+│   │   ├── JwtService.java            # Token generation & validation
+│   │   ├── AuthTokenFilter.java       # JWT authentication filter
+│   │   ├── AuthEntryPointJwt.java     # 401 handler
+│   │   └── JwtAccessDeniedHandler.java # 403 handler
 │   ├── services/
-│   │   ├── UserDetailsImpl.java         #   Spring Security UserDetails
-│   │   ├── UserDetailsServiceImpl.java  #   Loads user by email
-│   │   └── CookieService.java           #   Refresh token cookie mgmt
-│   ├── requests/
-│   │   ├── UserLoginRequest.java        #   Login payload
-│   │   └── UserRegisterRequest.java     #   Registration payload
-│   └── responses/
-│       └── MessageResponse.java         #   Simple message response
+│   │   ├── UserDetailsImpl.java       # Spring Security UserDetails
+│   │   ├── UserDetailsServiceImpl.java # Loads user by email
+│   │   └── CookieService.java         # Cookie management
+│   └── requests/
+│       ├── UserLoginRequest.java       # Login payload
+│       └── UserRegisterRequest.java    # Registration payload
 │
 ├── services/                            # Business logic layer
-│   ├── AuthService.java                 #   Interface
-│   ├── UserService.java                 #   Interface
-│   ├── SalonService.java                #   Interface
-│   ├── ServicesService.java             #   Interface
-│   ├── StaffService.java                #   Interface
-│   ├── BookingService.java              #   Interface
-│   ├── AvailabilityService.java         #   Interface
+│   ├── AuthService.java                # Interface
+│   ├── UserService.java               # Interface
+│   ├── SalonService.java              # Interface
+│   ├── ServicesService.java           # Interface
+│   ├── StaffService.java              # Interface
+│   ├── BookingService.java            # Interface
+│   ├── AvailabilityService.java       # Interface
+│   ├── SubscriptionService.java       # Interface
+│   ├── BillingService.java            # Interface
+│   ├── BillingProvider.java           # Interface
+│   ├── BillingInsightsService.java    # Interface
 │   ├── impl/
-│   │   ├── AuthServiceImpl.java         #   Auth + token rotation
-│   │   ├── UserServiceImpl.java         #   User resolution
-│   │   ├── SalonServiceImpl.java        #   Salon CRUD + role upgrade
-│   │   ├── ServicesServiceImpl.java     #   Service management
-│   │   ├── StaffServiceImpl.java        #   Staff lifecycle
-│   │   ├── BookingServiceImpl.java      #   Booking lifecycle + dashboard
-│   │   └── AvailabilityServiceImpl.java #   Slot calculation
+│   │   ├── AuthServiceImpl.java      # Auth + token rotation
+│   │   ├── UserServiceImpl.java      # User resolution
+│   │   ├── SalonServiceImpl.java     # Salon CRUD + role upgrade
+│   │   ├── ServicesServiceImpl.java   # Service management
+│   │   ├── StaffServiceImpl.java     # Staff lifecycle
+│   │   ├── BookingServiceImpl.java   # Booking lifecycle + dashboard
+│   │   └── AvailabilityServiceImpl.java # Slot calculation
 │   └── analytics/
-│       ├── AnalyticsService.java         #   Interface
-│       ├── AnalyticsServiceImpl.java     #   Trend & leaderboard queries
-│       └── TrendPointDTO.java            #   Date + value pair
+│       ├── AnalyticsService.java     # Interface
+│       ├── AnalyticsServiceImpl.java # Trends & leaderboards
+│       ├── AuditLogService.java      # Audit trail
+│       ├── AuditLogServiceImpl.java  # Audit implementation
+│       ├── BillingMetricsService.java # Revenue metrics
+│       ├── BillingMetricsServiceImpl.java # Metrics implementation
+│       ├── ForecastService.java      # Interface
+│       ├── ForecastServiceImpl.java  # Prediction logic
+│       ├── PlanService.java          # Plan management
+│       └── TrendPointDTO.java        # Trend data point
 │
 └── utils/
-    └── AuthUtils.java                   # Auth helper (resolve user)
+    ├── AuthUtils.java                # Auth helper
+    └── TenantContext.java           # Tenant resolution
 ```
 
 ---
 
 ## Layered Architecture
-
-The application follows a classic **3-tier layered architecture**:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -153,9 +184,9 @@ The application follows a classic **3-tier layered architecture**:
                            │ HTTP/REST
 ┌──────────────────────────▼──────────────────────────────────┐
 │                   Security Filter Chain                      │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
-│  │ CORS Filter │→ │AuthTokenFilter│→ │ SecurityFilterChain│  │
-│  └─────────────┘  └──────────────┘  └────────────────────┘  │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐│
+│  │ CORS Filter │→ │AuthTokenFilter│→ │ SecurityFilterChain││
+│  └─────────────┘  └──────────────┘  └────────────────────┘│
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -173,37 +204,13 @@ The application follows a classic **3-tier layered architecture**:
 ┌──────────────────────────▼──────────────────────────────────┐
 │                   Repository Layer                           │
 │  Spring Data JPA interfaces with JPQL queries,               │
-│  fetch joins to avoid N+1, DTO projections                   │
+│  fetch joins to avoid N+1, DTO projections                  │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
 │                      PostgreSQL                              │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-### Controller Layer
-
-Thin REST controllers that handle HTTP concerns only:
-- Request/response mapping
-- `@PreAuthorize` annotations for method-level role checks
-- Delegates all logic to service interfaces
-- Returns appropriate HTTP status codes
-
-### Service Layer
-
-All business logic lives here, following the **interface + implementation** pattern:
-- Every service has an interface (e.g., `BookingService`) and an `impl/` class (e.g., `BookingServiceImpl`)
-- Ownership and tenant authorization is enforced here (not in controllers)
-- Transactional boundaries are declared at this level
-- Services depend on other service interfaces, not implementations
-
-### Repository Layer
-
-Spring Data JPA repositories with:
-- Custom `@Query` methods using JPQL
-- Fetch joins to prevent N+1 problems (`findByEmailWithRoles`, `findByIdWithDetails`)
-- DTO projections for listing endpoints (`findServiceResponsesBySalon`)
-- Complex paginated queries with dynamic filtering
 
 ---
 
@@ -217,8 +224,8 @@ Spring Data JPA repositories with:
 │          │        │          │  owner  │              │
 └──────────┘        │          │        └──────┬───────┘
                     │          │               │
-                    │          │──M:1──►        │ 1:N
-                    │          │ staffSalon     │
+                    │          │──M:1──►       │ 1:N
+                    │          │ staffSalon    │
                     │          │               ▼
                     │          │──M:N──►┌──────────────┐
                     │          │        │   Services   │
@@ -228,37 +235,30 @@ Spring Data JPA repositories with:
                     ┌────▼─────┐               │
                     │ Refresh  │               │
                     │  Token   │               │
-                    └──────────┘               │
-                                               │
-                    ┌──────────────────────────┐
-                    │        Booking            │
-                    │  salon ──► Salon          │
-                    │  service ──► Services     │
-                    │  staff ──► User           │
-                    │  customer ──► User        │
-                    └──────────────────────────┘
+                    └────────────┘               │
+                         │                       │
+┌───────────────────────┼─────────────────────────┤
+│                       │                         │
+│  ┌────────────────────▼────────────────────┐  │
+│  │              Subscription                │◄─┘
+│  │  salon ──► Salon                        │
+│  │  plan ──► Plan                          │
+│  └────────────────────┬────────────────────┘
+│                       │
+│  ┌────────────────────▼────────────────────┐
+│  │         BillingTransaction              │
+│  │  subscription ──► Subscription          │
+│  │  status ──► BillingStatus               │
+│  └─────────────────────────────────────────┘
+│
+│  ┌──────────────────────┐
+│  │        Booking        │
+│  │  salon ──► Salon     │
+│  │  service ──► Services│
+│  │  staff ──► User      │
+│  │  customer ──► User   │
+│  └──────────────────────┘
 ```
-
-### Key Entities
-
-| Entity         | Description                                                         |
-| -------------- | ------------------------------------------------------------------- |
-| **User**       | Central identity. Can be a customer, staff member, salon admin, or super admin. Has M:N relationship with `Role` and `Services`. Optionally linked to a `Salon` as owner (1:1) or staff member (M:1). |
-| **Salon**      | A salon business. Strictly one owner (`User`). All data is tenant-scoped through this entity. |
-| **Services**   | A service offered by a salon (e.g., "Haircut"). Has price, duration, active flag. Unique per salon by name. M:N with staff (via `staff_services` join table). |
-| **Booking**    | An appointment. Links a salon, service, staff member, and customer with a time range and lifecycle status. Indexed for performance on staff+time, salon+date, and status. |
-| **Role**       | Persistent role entity mapped to the `AppRole` enum.                |
-| **RefreshToken** | Persisted JTI-tracked refresh token for secure token rotation. Supports revocation and replacement chain tracking. |
-
-### Enums
-
-| Enum              | Values                                                    |
-| ----------------- | --------------------------------------------------------- |
-| `AppRole`         | `ROLE_USER`, `ROLE_SALON_ADMIN`, `ROLE_SUPER_ADMIN`, `ROLE_STAFF` |
-| `BookingStatus`   | `PENDING`, `CONFIRMED`, `CANCELLED`, `COMPLETED`, `NO_SHOW` |
-| `BookingRange`    | `TODAY`, `UPCOMING`, `PAST`                               |
-| `TrendRange`      | `LAST_7_DAYS`, `LAST_30_DAYS`, `LAST_90_DAYS`, `CUSTOM`  |
-| `Provider`        | `LOCAL`, `GOOGLE`, `FACEBOOK`, `GITHUB` (future OAuth2)   |
 
 ---
 
@@ -267,332 +267,214 @@ Spring Data JPA repositories with:
 ### Authentication Flow
 
 ```
-             ┌──────────┐
-             │  Client  │
-             └────┬─────┘
-                  │
-    ┌─────────────▼──────────────┐
-    │   POST /api/auth/login     │
-    │   { email, password }      │
-    └─────────────┬──────────────┘
-                  │
-    ┌─────────────▼──────────────┐
-    │  AuthenticationManager     │
-    │  DaoAuthenticationProvider │
-    │  BCryptPasswordEncoder     │
-    └─────────────┬──────────────┘
-                  │ ✅ Authenticated
-    ┌─────────────▼──────────────┐
-    │  JwtService generates:     │
-    │  • Access Token (10 min)   │
-    │  • Refresh Token (24 hr)   │
-    └─────────────┬──────────────┘
-                  │
-    ┌─────────────▼──────────────┐
-    │  Response:                  │
-    │  Body:  { accessToken }    │
-    │  Cookie: refreshToken      │
-    │         (httpOnly, secure)  │
-    └────────────────────────────┘
+Client → POST /api/auth/login {email, password}
+    → AuthenticationManager (BCrypt)
+    → JwtService generates:
+        • Access Token (10 min)
+        • Refresh Token (24 hr)
+    → Response:
+        • Body: { accessToken }
+        • Cookie: refreshToken (httpOnly)
 ```
 
 ### JWT Token Design
 
-**Access Token** (short-lived, 10 minutes):
+**Access Token** (10 minutes):
 - Subject: user email
 - Claims: `userId`, `roles[]`, `typ: "access"`
-- Sent via `Authorization: Bearer <token>` header
+- Header: `Authorization: Bearer <token>`
 
-**Refresh Token** (long-lived, 24 hours):
+**Refresh Token** (24 hours):
 - Subject: user email
 - Claims: `typ: "refresh"`, JTI (unique ID)
-- Sent via httpOnly cookie or request body
 - Persisted in database for revocation and rotation
 
 ### Token Rotation
 
-The refresh flow implements **token rotation with revocation detection**:
-
-1. Client sends refresh token (cookie or body)
-2. Server validates the token and looks up the JTI in the database
-3. Old refresh token is revoked, `replacedByToken` is set
-4. New access + refresh tokens are issued
-5. New refresh token JTI is persisted
+1. Client sends refresh token
+2. Server validates token + looks up JTI
+3. Old token revoked, `replacedByToken` set
+4. New access + refresh tokens issued
+5. New JTI persisted
 
 This prevents refresh token replay attacks.
-
-### Request Authentication Pipeline
-
-```
-HTTP Request
-    │
-    ▼
-AuthTokenFilter (OncePerRequestFilter)
-    │
-    ├── Skip: /api/auth/login, /api/auth/register, /api/auth/refresh
-    │
-    ├── No "Bearer" header → pass through (anonymous)
-    │
-    ├── Extract token → reject if not access token type
-    │
-    ├── Extract email from subject → load UserDetails from DB
-    │
-    ├── Validate token (signature, expiry, subject match)
-    │
-    └── Set SecurityContext authentication
-         │
-         ▼
-    SecurityFilterChain (URL pattern checks)
-         │
-         ▼
-    @PreAuthorize (method-level role checks)
-         │
-         ▼
-    Service Layer (ownership/tenant checks)
-```
 
 ---
 
 ## Authorization Model
 
-Authorization is enforced in **three distinct layers**:
+### Three-Layer Authorization
 
-### Layer 1 — Authentication (Spring Security Filter)
+| Layer | Question | Implementation |
+|-------|----------|----------------|
+| Authentication | "Logged in?" | AuthTokenFilter + SecurityContext |
+| Role-Based | "What role?" | SecurityConfig + @PreAuthorize |
+| Ownership | "Is it theirs?" | Service layer tenant guards |
 
-> "Is the user logged in?"
-
-The `AuthTokenFilter` validates the JWT and populates the `SecurityContext`. Binary: authenticated or not.
-
-### Layer 2 — Role-Based Access (SecurityConfig + @PreAuthorize)
-
-> "What kind of user is this?"
-
-**URL-level rules** (SecurityConfig):
+### Role Hierarchy
 
 ```
-Permit All:      /api/auth/login, /api/auth/register, /api/auth/refresh
-                 /api/public/**, /swagger-ui/**, /v3/api-docs/**
-Authenticated:   POST /api/salons, GET /api/salons/me
-SALON_ADMIN:     /api/salons/**
-SUPER_ADMIN:     /api/admin/**
-Any Auth:        everything else
+ROLE_USER ──(creates salon)──► ROLE_SALON_ADMIN
 ```
 
-**Method-level rules** (`@PreAuthorize` on controller methods):
-
-```
-Booking create:     USER or SALON_ADMIN
-Salon bookings:     SALON_ADMIN
-Complete/No-show:   STAFF or SALON_ADMIN
-Analytics:          SALON_ADMIN
-Staff listing:      SALON_ADMIN
-```
-
-### Layer 3 — Ownership / Tenant Authorization (Service Layer)
-
-> "Is this resource theirs?"
-
-- Salon data is always resolved from the authenticated user: `salonRepository.findByOwner(currentUser)`
-- No salon ID is ever accepted from the client for admin operations
-- Booking ownership is checked per role (admin → salon scope, staff → assigned, user → customer)
-- Staff must belong to the salon to be managed
-
-### Role Transition
-
-```
-ROLE_USER  ──(creates salon)──►  ROLE_SALON_ADMIN
-```
-
-A user is promoted from `ROLE_USER` → `ROLE_SALON_ADMIN` automatically upon successful salon creation. The new role is reflected after the next token refresh.
-
-### Roles Summary
-
-| Role               | Capabilities                                                     |
-| ------------------ | ---------------------------------------------------------------- |
-| `ROLE_USER`        | Browse salons, book appointments, view own bookings              |
-| `ROLE_STAFF`       | View assigned bookings, complete bookings, mark no-shows         |
-| `ROLE_SALON_ADMIN` | Full salon management: services, staff, bookings, analytics      |
-| `ROLE_SUPER_ADMIN` | Platform-level control (reserved for `/api/admin/**`)            |
+| Role | Capabilities |
+|------|-------------|
+| `ROLE_USER` | Browse salons, book appointments |
+| `ROLE_STAFF` | View assigned bookings, complete, no-show |
+| `ROLE_SALON_ADMIN` | Full salon + billing + analytics |
+| `ROLE_SUPER_ADMIN` | Platform-level control |
 
 ---
 
-## API Endpoints
+## Billing & Subscriptions
 
-### Authentication (`/api/auth`)
+### Subscription Flow
 
-| Method | Path         | Auth     | Description                    |
-| ------ | ------------ | -------- | ------------------------------ |
-| POST   | `/register`  | Public   | Register a new user            |
-| POST   | `/login`     | Public   | Login, returns JWT + cookie    |
-| POST   | `/refresh`   | Public   | Rotate tokens                  |
-| POST   | `/logout`    | Auth     | Revoke refresh token           |
-| GET    | `/me`        | Auth     | Current user profile           |
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Subscription Lifecycle                     │
+│                                                              │
+│  FREE ──[upgrade]──► PRO/PREMIUM ──[expire]──► EXPIRED     │
+│     │                    │                    │              │
+│     │                    │                    │              │
+│     ▼                    ▼                    ▼              │
+│  ACTIVE               ACTIVE ◄──[renew]── EXPIRED          │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
 
-### Salon Management (`/api/salons`)
+### Plan Limits
 
-| Method | Path   | Auth        | Description                      |
-| ------ | ------ | ----------- | -------------------------------- |
-| POST   | `/`    | Auth        | Create salon (+ role upgrade)    |
-| GET    | `/me`  | Auth        | Get my salon                     |
-| PUT    | `/me`  | SALON_ADMIN | Update my salon                  |
+| Feature | FREE | PRO | PREMIUM |
+|---------|------|-----|---------|
+| Max Staff | 2 | 5 | Unlimited |
+| Max Services | 5 | 20 | Unlimited |
+| Max Bookings/Month | 50 | 200 | Unlimited |
+| Analytics | Basic | Advanced | Full |
+| Smart Alerts | No | Yes | Yes |
+| Price/Month | Free | ₹999 | ₹1999 |
 
-### Services (`/api/salons/services`)
+### Stripe Integration
 
-| Method | Path                      | Auth        | Description                  |
-| ------ | ------------------------- | ----------- | ---------------------------- |
-| GET    | `/`                       | SALON_ADMIN | List my salon's services     |
-| POST   | `/`                       | SALON_ADMIN | Create a service             |
-| PUT    | `/{serviceId}`            | SALON_ADMIN | Update a service             |
-| PATCH  | `/{serviceId}/deactivate` | SALON_ADMIN | Deactivate (if no staff)     |
-| PATCH  | `/{serviceId}/reactivate` | SALON_ADMIN | Reactivate                   |
-| GET    | `/{serviceId}/staff`      | SALON_ADMIN | Staff assigned to service    |
+- **Checkout Sessions** - Customer subscription purchase
+- **Customer Portal** - Self-service billing management
+- **Webhooks** - Async payment events (checkout.session.completed, invoice.payment_succeeded, customer.subscription.deleted)
+- **Price IDs** - Configurable per environment
 
-### Staff (`/api/salons/staff`)
+---
 
-| Method | Path                   | Auth        | Description                  |
-| ------ | ---------------------- | ----------- | ---------------------------- |
-| GET    | `/`                    | SALON_ADMIN | List salon staff             |
-| POST   | `/`                    | SALON_ADMIN | Create staff member          |
-| PATCH  | `/{id}/deactivate`     | SALON_ADMIN | Deactivate + unassign        |
-| PATCH  | `/{id}/reactivate`     | SALON_ADMIN | Reactivate                   |
-| GET    | `/{staffId}/services`  | SALON_ADMIN | Services for a staff member  |
-| PUT    | `/{id}/services`       | SALON_ADMIN | Assign services to staff     |
+## Analytics & Intelligence
 
-### Bookings (`/api/bookings`)
+### Dashboard Metrics
 
-| Method | Path                      | Auth                   | Description                     |
-| ------ | ------------------------- | ---------------------- | ------------------------------- |
-| POST   | `/`                       | USER / SALON_ADMIN     | Create booking                  |
-| GET    | `/`                       | All roles              | Paginated list (role-scoped)    |
-| GET    | `/{bookingId}`            | All roles              | Single booking (ownership)      |
-| GET    | `/salon`                  | SALON_ADMIN            | Salon bookings (30 day window)  |
-| GET    | `/today`                  | SALON_ADMIN / STAFF    | Today's bookings                |
-| GET    | `/staff/{staffId}`        | SALON_ADMIN / STAFF    | Staff schedule for a date       |
-| GET    | `/availability`           | USER / SALON_ADMIN     | Available time slots            |
-| PATCH  | `/{bookingId}/cancel`     | USER / SALON_ADMIN     | Cancel booking                  |
-| PATCH  | `/{bookingId}/complete`   | STAFF / SALON_ADMIN    | Complete booking                |
-| PATCH  | `/{bookingId}/no-show`    | STAFF / SALON_ADMIN    | Mark no-show                    |
-| GET    | `/dashboard/admin`        | SALON_ADMIN            | Dashboard aggregates            |
+| Endpoint | Description |
+|----------|-------------|
+| `/api/analytics/bookings/trend` | Booking count over time |
+| `/api/analytics/revenue/trend` | Revenue over time |
+| `/api/analytics/leaderboard/staff` | Top 5 staff by completions |
+| `/api/analytics/leaderboard/services` | Top 5 services by completions |
 
-### Analytics (`/api/analytics`)
+### Forecasting
 
-| Method | Path                    | Auth        | Description                    |
-| ------ | ----------------------- | ----------- | ------------------------------ |
-| GET    | `/bookings/trend`       | SALON_ADMIN | Booking count trend over time  |
-| GET    | `/revenue/trend`        | SALON_ADMIN | Revenue trend over time        |
-| GET    | `/leaderboard/staff`    | SALON_ADMIN | Top 5 staff by completions     |
-| GET    | `/leaderboard/services` | SALON_ADMIN | Top 5 services by completions  |
+Uses simple moving average algorithm:
+- 7-day historical booking patterns
+- Predicts next 14 days
+- Considers day-of-week seasonality
 
-### Public (`/api/public`)
+### Revenue Timeline
 
-| Method | Path                           | Auth   | Description                  |
-| ------ | ------------------------------ | ------ | ---------------------------- |
-| GET    | `/salons`                      | Public | List all salons              |
-| GET    | `/salons/{salonId}`            | Public | Salon details                |
-| GET    | `/salons/{salonId}/services`   | Public | Active services for a salon  |
-| GET    | `/services/{serviceId}/staff`  | Public | Active staff for a service   |
+- Daily aggregation of completed bookings
+- Salon-scoped (admins see only their salon)
+- Date range filtering
+
+---
+
+## Audit Logging
+
+### Events Tracked
+
+- `SUBSCRIPTION_CREATED` - New subscription
+- `SUBSCRIPTION_UPGRADED` - Plan upgrade
+- `SUBSCRIPTION_RENEWED` - Auto-renewal
+- `SUBSCRIPTION_EXPIRED` - Expiration
+- `SUBSCRIPTION_CANCELLED` - Manual cancellation
+- `PAYMENT_SUCCEEDED` - Successful payment
+- `PAYMENT_FAILED` - Failed payment
+
+### Implementation
+
+- Async event publication via `AuditLogService`
+- Structured payload (actor, action, details, salon_id)
+- REST API for admin viewing: `/api/admin/audit/*`
+
+---
+
+## Scheduled Jobs
+
+### SubscriptionExpiryJob
+
+- Runs daily at midnight
+- Finds subscriptions where `endDate < now`
+- Sets status to `EXPIRED`
+- Logs audit event
+
+### PendingPaymentReconcilerJob
+
+- Runs every 15 minutes
+- Finds `PENDING` transactions older than 5 minutes
+- Retries up to 3 times
+- Marks as `FAILED_PERMANENT` after max retries
 
 ---
 
 ## Booking Lifecycle
 
-Bookings follow a strict state machine with guarded transitions:
-
 ```
-                    ┌──────────┐
-        ┌──────────►│CANCELLED │◄──────────┐
-        │           └──────────┘           │
-        │                                  │
-┌───────┴──┐        ┌──────────┐     ┌─────┴────┐
-│ CONFIRMED│───────►│COMPLETED │     │ PENDING  │
-└───────┬──┘        └──────────┘     └─────┬────┘
-        │                                  │
-        │           ┌──────────┐           │
-        └──────────►│ NO_SHOW  │     CONFIRMED
-                    └──────────┘
+         ┌──────────┐
+         │CANCELLED │◄──────────┐
+         └──────────┘           │
+           ▲                    │
+           │                    ▼
+┌─────────┴───┐     ┌──────────┐     ┌─────┴────┐
+│  CONFIRMED  │────►│COMPLETED │     │ PENDING  │
+└─────────────┘     └──────────┘     └────┬────┘
+     ▲                                   │
+     │              ┌──────────┐         │
+     └─────────────►│ NO_SHOW  │─────────┘
+                    └──────────┘       CONFIRMED
 ```
 
-- New bookings are currently created with status `CONFIRMED` (auto-confirmed)
-- `PENDING` → `CONFIRMED` | `CANCELLED` (supported by code, for future use if a confirmation step is added)
-- `CONFIRMED` → `CANCELLED` | `COMPLETED` | `NO_SHOW`
-- Terminal states (`CANCELLED`, `COMPLETED`, `NO_SHOW`) cannot be transitioned further
-- Conflict detection prevents double-booking: overlapping confirmed bookings for the same staff are rejected
+### Conflict Detection
+
+Before booking creation:
+```java
+bookingRepository.findOverlappingBookings(staffId, start, end)
+```
+Prevents double-booking at database level.
 
 ---
 
 ## Availability System
 
-The `AvailabilityService` calculates free time slots for a staff member on a given date:
-
-1. Working hours: 09:00 – 21:00 (Asia/Kolkata timezone)
-2. Fetches all confirmed bookings for the staff on that day
-3. Computes gaps between booked slots
-4. Returns available `TimeSlot` windows as `OffsetDateTime` pairs
+1. Working hours: 09:00 – 21:00 (Asia/Kolkata)
+2. Fetch confirmed bookings for staff on date
+3. Compute gaps between booked slots
+4. Return available `TimeSlot` windows
 
 ---
 
 ## Error Handling
 
-`GlobalExceptionHandler` (`@RestControllerAdvice`) maps exceptions to consistent HTTP responses:
-
-| Exception                   | HTTP Status | Scenario                              |
-| --------------------------- | ----------- | ------------------------------------- |
-| `ResourceNotFoundException` | 404         | Entity not found                      |
-| `AlreadyExistsException`    | 409         | Duplicate resource (salon, service)   |
-| `CanNotException`           | 409         | Business rule violation               |
-| `DeactivateException`       | 409         | Deactivation blocked by dependencies  |
-| `InactiveException`         | 409         | Operating on inactive resource        |
-| `RefreshTokenException`     | 401         | Invalid/expired/revoked refresh token |
-| `BadCredentialsException`   | 401         | Wrong email or password               |
-| `DisabledException`         | 403         | Account disabled                      |
-| `AccessDeniedException`     | 403         | Insufficient permissions              |
-
-Error response format:
-
-```json
-{
-  "message": "Service with this name already exists",
-  "status": "CONFLICT"
-}
-```
-
----
-
-## Data Transfer Objects
-
-The project uses Java **records** for all DTOs, ensuring immutability:
-
-- **Request records** include Jakarta Validation annotations (`@NotBlank`, `@Min`, `@DecimalMin`, etc.)
-- **Response records** are flat projections — no nested entities are leaked
-- `PageResponse<T>` provides a generic paginated wrapper
-- `TokenResponse` uses a static factory method (`TokenResponse.of(...)`) for clean construction
-
----
-
-## Configuration
-
-### Profiles
-
-- `application.yaml` — base config, activates `dev` profile
-- `application-dev.yaml` — PostgreSQL connection, JWT secrets, CORS origins
-
-### Key Configuration Properties
-
-| Property                           | Purpose                                 |
-| ---------------------------------- | --------------------------------------- |
-| `spring.datasource.*`              | PostgreSQL connection                   |
-| `spring.jpa.hibernate.ddl-auto`    | Schema auto-update (`update`)           |
-| `security.jwt.secret`              | HMAC-SHA signing key (≥64 chars)        |
-| `security.jwt.access-ttl-seconds`  | Access token lifetime (600s = 10 min)   |
-| `security.jwt.refresh-ttl-seconds` | Refresh token lifetime (86400s = 24 hr) |
-| `security.jwt.cookie-*`            | Refresh cookie settings                 |
-| `app.cors.front-end-url`           | Allowed CORS origin                     |
-
-### Database Seeding
-
-`SecurityConfig` contains a `CommandLineRunner` that initializes:
-- All four roles (`ROLE_USER`, `ROLE_STAFF`, `ROLE_SALON_ADMIN`, `ROLE_SUPER_ADMIN`)
-- Three seed users: `user1` (user), `owner1` (salon admin), `admin` (super admin)
+| Exception | HTTP | Scenario |
+|-----------|------|----------|
+| `ResourceNotFoundException` | 404 | Entity not found |
+| `AlreadyExistsException` | 409 | Duplicate resource |
+| `CanNotException` | 409 | Business rule violation |
+| `DeactivateException` | 409 | Deactivation blocked |
+| `InactiveException` | 409 | Inactive resource |
+| `PlanLimitExceededException` | 403 | Plan limit reached |
+| `PlanUpgradeRequiredException` | 402 | Upgrade needed |
+| `RefreshTokenException` | 401 | Invalid token |
 
 ---
 
@@ -600,60 +482,130 @@ The project uses Java **records** for all DTOs, ensuring immutability:
 
 ### 1. Tenant Isolation via Owner Resolution
 
-Salon data is never accessed by client-supplied ID for admin operations. Instead:
 ```java
 Salon salon = salonRepository.findByOwner(currentUser);
 ```
-This eliminates an entire class of authorization bypass vulnerabilities.
+No client-supplied salon IDs trusted for admin operations.
 
 ### 2. One User, One Salon
 
-The `User → Salon` relationship is 1:1 with a unique constraint on `owner_id`. This simplifies tenant resolution — the authenticated user's salon is always unambiguous.
+1:1 relationship with unique constraint on `owner_id`.
 
-### 3. Dynamic Role Promotion
+### 3. Stateless Sessions + Persistent Refresh Tokens
 
-Users start as `ROLE_USER`. Creating a salon automatically adds `ROLE_SALON_ADMIN`. No manual intervention or separate admin workflow is required.
+Fully stateless API. Refresh tokens persisted with JTI tracking:
+- Token rotation
+- Revocation
+- Replacement chain
 
-### 4. Stateless Sessions + Persistent Refresh Tokens
+### 4. Booking Conflict Detection
 
-The API is fully stateless (no HTTP sessions). Refresh tokens are persisted in the database with JTI tracking, enabling:
-- Token rotation (new JTI per refresh)
-- Revocation (logout, compromise detection)
-- Replacement chain tracking (`replacedByToken`)
+Database-level overlap detection prevents double-booking.
 
-### 5. Service-Staff Many-to-Many
+### 5. Deactivation Guards
 
-Staff members are assigned to specific services. Bookings validate that the selected staff is assigned to the selected service, ensuring domain consistency.
+- Services cannot be deactivated with assigned staff
+- Staff deactivation clears service assignments
+- Inactive resources rejected during booking
 
-### 6. Booking Conflict Detection
+### 6. Soft Deletes
 
-Before creating a booking, the system queries for overlapping confirmed bookings on the same staff member:
-```java
-bookingRepository.findOverlappingBookings(staffId, start, end)
-```
-This prevents double-booking at the database query level.
-
-### 7. Deactivation Guards
-
-- Services cannot be deactivated while staff is assigned (prevents orphaned assignments)
-- Deactivating staff automatically clears their service assignments
-- Inactive staff/services are rejected during booking creation
-
-### 8. Role-Scoped Booking Queries
-
-The paginated booking list endpoint returns different results based on the caller's role:
-- **SALON_ADMIN**: All bookings for their salon
-- **STAFF**: Only bookings assigned to them
-- **USER**: Only bookings where they are the customer
-
-This is implemented with separate JPQL queries per role, supporting filtering by status, search text, date range, and time range (`today`, `upcoming`, `past`).
+Staff and services use `active` flag, not deletion.
 
 ---
 
 ## Performance Considerations
 
-- **Fetch joins** on critical paths (user+roles, booking+service+staff+customer) to eliminate N+1 queries
-- **DTO projections** in `ServicesRepository.findServiceResponsesBySalon()` to avoid loading unused fields
-- **Database indexes** on `Booking` table: `idx_booking_staff_time`, `idx_booking_salon_date`, `idx_booking_status`
-- **Refresh token indexes**: unique index on `jti`, index on `user_id`
-- `spring.jpa.open-in-view: false` — prevents accidental lazy loading in controllers
+- **Fetch joins** on critical paths (user+roles, booking+service+staff+customer)
+- **DTO projections** to avoid loading unused fields
+- **Database indexes** on Booking table
+- **Refresh token indexes** on JTI and user_id
+- `spring.jpa.open-in-view: false`
+
+---
+
+## Docker Deployment
+
+### Dockerfile
+
+Multi-stage build:
+1. **Builder stage** - JDK Alpine, Maven build
+2. **Runtime stage** - JRE Alpine, non-root user
+
+### docker-compose.yml
+
+- App service (port 8080)
+- PostgreSQL service (port 5432)
+- Health checks
+
+### Resource Tuning
+
+```dockerfile
+ENV JAVA_OPTS="-Xms128m -Xmx256m"
+```
+
+Optimized for 1GB RAM server.
+
+---
+
+## Challenges & Solutions
+
+| Challenge | Solution |
+|-----------|----------|
+| Lombok not generating code | Added annotationProcessorPaths to maven-compiler-plugin |
+| 1GB RAM server constraints | Multi-stage Docker, reduced JVM heap |
+| Tenant isolation bypass risk | Owner-based resolution, no client IDs |
+| Token replay attacks | JTI-based rotation with revocation |
+| Double-booking | Database-level conflict detection |
+| Subscription expiry | Daily cron job + audit logging |
+
+---
+
+## API Reference
+
+### Authentication (`/api/auth`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/register` | Public | Register user |
+| POST | `/login` | Public | Login |
+| POST | `/refresh` | Public | Rotate tokens |
+| POST | `/logout` | Auth | Revoke token |
+| GET | `/me` | Auth | Current user |
+
+### Bookings (`/api/bookings`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/` | USER | Create booking |
+| GET | `/` | All | List (role-scoped) |
+| GET | `/salon` | ADMIN | Salon bookings |
+| GET | `/availability` | USER | Time slots |
+| PATCH | `/{id}/cancel` | USER | Cancel |
+| PATCH | `/{id}/complete` | STAFF | Complete |
+| PATCH | `/{id}/no-show` | STAFF | No-show |
+
+### Billing (`/api/billing`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/current` | ADMIN | Current subscription |
+| POST | `/checkout` | ADMIN | Create checkout session |
+| GET | `/portal` | ADMIN | Customer portal URL |
+| POST | `/webhook` | Stripe | Webhook endpoint |
+
+### Analytics (`/api/analytics`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/bookings/trend` | ADMIN | Booking trends |
+| GET | `/revenue/trend` | ADMIN | Revenue trends |
+| GET | `/leaderboard/staff` | ADMIN | Top staff |
+| GET | `/leaderboard/services` | ADMIN | Top services |
+
+### Admin (`/api/admin`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/audit/recent` | SUPER_ADMIN | Recent audits |
+| GET | `/audit/salon/{id}` | SUPER_ADMIN | Salon audits |
