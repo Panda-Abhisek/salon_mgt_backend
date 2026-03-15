@@ -69,6 +69,11 @@ server:
   error:
     include-message: always
     include-binding-errors: always
+  forward-headers-strategy: framework
+  # Use this if you are using a standard reverse proxy setup
+  tomcat:
+    remote-ip-header: x-forwarded-for
+    protocol-header: x-forwarded-proto
 
 logging:
   level:

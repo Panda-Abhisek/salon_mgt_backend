@@ -16,6 +16,7 @@ public class CorsConfig implements WebMvcConfigurer {
         String[] allowedOrigins = frontendUrl.split(",");
         registry.addMapping("/**")
                 .allowedOrigins(allowedOrigins) //when testing locally, you can set this to "http://localhost:3000" or the URL of your frontend
+//                .allowedOrigins("http://localhost:5173")
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);
