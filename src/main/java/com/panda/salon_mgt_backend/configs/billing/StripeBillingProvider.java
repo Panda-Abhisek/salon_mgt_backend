@@ -51,8 +51,10 @@ public class StripeBillingProvider implements BillingProvider {
             SessionCreateParams params =
                     SessionCreateParams.builder()
                             .setMode(SessionCreateParams.Mode.SUBSCRIPTION) // 🔥 IMPORTANT
-                            .setSuccessUrl("http://localhost:5173/billing/success")
-                            .setCancelUrl("http://localhost:5173/billing")
+//                            .setSuccessUrl("http://localhost:5173/billing/success")
+                            .setSuccessUrl("https://salon-mgt.abhisekpanda.co.in/billing/success")
+                            .setCancelUrl("https://salon-mgt.abhisekpanda.co.in/billing")
+//                            .setCancelUrl("http://localhost:5173/billing")
                             .putMetadata("txId", tx.getId().toString())
                             .addLineItem(
                                     SessionCreateParams.LineItem.builder()
