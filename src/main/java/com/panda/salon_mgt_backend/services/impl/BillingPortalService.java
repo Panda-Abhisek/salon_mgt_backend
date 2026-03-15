@@ -39,7 +39,7 @@ public class BillingPortalService {
             SessionCreateParams params =
                     SessionCreateParams.builder()
                             .setCustomer(sub.getStripeCustomerId())
-                            .setReturnUrl("http://localhost:5173/billing")
+                            .setReturnUrl("https://salon-mgt.abhisekpanda.co.in/billing")
                             .build();
 
             Session session = Session.create(params);
