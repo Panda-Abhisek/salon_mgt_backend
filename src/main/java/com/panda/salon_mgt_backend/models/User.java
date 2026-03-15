@@ -35,7 +35,6 @@ public class User {
     @Column(name = "email")
     private String email;
 
-    @NotBlank
     @Size(max = 120)
     @Column(name = "password")
     private String password;
@@ -54,6 +53,11 @@ public class User {
         this.password = password;
         this.enabled = enabled;
     }
+
+    @Enumerated(EnumType.STRING)
+    private Provider provider;
+
+    private String providerId;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
